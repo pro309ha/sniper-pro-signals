@@ -1,157 +1,134 @@
 /**
- * BTC/USDT Signal Terminal — script.js
- * ─────────────────────────────────────
- * FIX: Robust proxy response parsing — handles all proxy wrapper formats
- *      (plain array, allorigins {contents}, etc.)
+ * BTC/USDT Signal Terminal — script.js v3
+ * ────────────────────────────────────────
+ * Strategy: Try multiple API sources in order.
+ * Source 1: Binance directly (works on many mobile browsers / networks)
+ * Source 2: Binance via corsproxy.io  — returns raw array
+ * Source 3: Binance via allorigins    — wraps in {contents:"[...]"}
+ * Source 4: Binance via cors-anywhere (public demo)
+ * Source 5: CoinGecko (price only fallback)
+ *
+ * extractKlines() safely unwraps ANY proxy wrapper format.
  */
 
 'use strict';
 
-// ──────────────────────────────────────────────
-// CONFIG
-// ──────────────────────────────────────────────
-const CONFIG = {
+/* ──────────── CONFIG ──────────── */
+const CFG = {
   symbol:      'BTCUSDT',
   emaFast:     50,
   emaSlow:     200,
   rsiPeriod:   14,
   refreshMs:   10000,
-  candleLimit: 210,
+  limit:       210,
 };
 
-// ──────────────────────────────────────────────
-// STATE
-// ──────────────────────────────────────────────
-let previousPrice  = null;
+/* ──────────── STATE ──────────── */
+let prevPrice      = null;
 let countdownTimer = null;
-let proxyIndex     = 0;
+let lastWorkingIdx = 0;
 
-// ──────────────────────────────────────────────
-// PROXY LIST — each has build() and parse()
-// parse() extracts the klines array from whatever the proxy wraps it in
-// ──────────────────────────────────────────────
-const PROXIES = [
+/* ──────────── API SOURCES ──────────── */
+/*
+ * Each source has:
+ *   url(interval)  – builds the full URL to fetch
+ *   unwrap(data)   – extracts klines array from whatever is returned
+ */
+const SOURCES = [
+  /* ① Direct Binance — no CORS header needed on many Android browsers */
   {
-    name:  'corsproxy.io',
-    build: url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    parse: data => Array.isArray(data) ? data : null,
+    name: 'Binance Direct',
+    url:  iv => `https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`,
+    unwrap: d => Array.isArray(d) ? d : null,
   },
+  /* ② Binance US mirror — different domain, sometimes less restrictive */
   {
-    name:  'allorigins (get)',
-    build: url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    parse: data => {
-      // allorigins wraps: { contents: "[...]", status: {...} }
+    name: 'Binance US',
+    url:  iv => `https://api.binance.us/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`,
+    unwrap: d => Array.isArray(d) ? d : null,
+  },
+  /* ③ corsproxy.io — returns JSON as-is */
+  {
+    name: 'corsproxy.io',
+    url:  iv => `https://corsproxy.io/?${encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`)}`,
+    unwrap: d => Array.isArray(d) ? d : null,
+  },
+  /* ④ allorigins /get — wraps body in { contents: "..." } */
+  {
+    name: 'allorigins /get',
+    url:  iv => `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`)}`,
+    unwrap: d => {
       try {
-        if (data && typeof data.contents === 'string') {
-          const inner = JSON.parse(data.contents);
-          if (Array.isArray(inner)) return inner;
+        if (d && typeof d.contents === 'string') {
+          const p = JSON.parse(d.contents);
+          return Array.isArray(p) ? p : null;
         }
-        if (data && Array.isArray(data.contents)) return data.contents;
       } catch (_) {}
       return null;
     },
   },
+  /* ⑤ allorigins /raw — returns raw text of JSON */
   {
-    name:  'allorigins (raw)',
-    build: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    parse: data => Array.isArray(data) ? data : null,
+    name: 'allorigins /raw',
+    url:  iv => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`)}`,
+    unwrap: d => Array.isArray(d) ? d : null,
   },
+  /* ⑥ htmldriven cors-anywhere public demo */
   {
-    name:  'thingproxy',
-    build: url => `https://thingproxy.freeboard.io/fetch/${url}`,
-    parse: data => Array.isArray(data) ? data : null,
-  },
-  {
-    name:  'direct (no proxy)',
-    build: url => url,
-    parse: data => Array.isArray(data) ? data : null,
+    name: 'cors-anywhere',
+    url:  iv => `https://cors-anywhere.herokuapp.com/https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`,
+    unwrap: d => Array.isArray(d) ? d : null,
   },
 ];
 
-// ──────────────────────────────────────────────
-// SAFE ARRAY EXTRACTOR
-// Handles any wrapper a proxy might add
-// ──────────────────────────────────────────────
-function extractArray(raw) {
-  if (Array.isArray(raw)) return raw;
-
-  if (raw && typeof raw === 'object') {
-    // allorigins: { contents: "[...]" }
-    if (typeof raw.contents === 'string') {
-      try { const p = JSON.parse(raw.contents); if (Array.isArray(p)) return p; } catch (_) {}
-    }
-    if (Array.isArray(raw.contents)) return raw.contents;
-    if (Array.isArray(raw.data))     return raw.data;
-    if (Array.isArray(raw.result))   return raw.result;
-  }
-
-  // Some proxies return a JSON string in the body
-  if (typeof raw === 'string') {
-    try { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } catch (_) {}
-  }
-
-  return null;
-}
-
-// ──────────────────────────────────────────────
-// FETCH WITH PROXY ROTATION
-// ──────────────────────────────────────────────
-function buildBinanceUrl(interval) {
-  return (
-    `https://api.binance.com/api/v3/klines` +
-    `?symbol=${CONFIG.symbol}&interval=${interval}&limit=${CONFIG.candleLimit}`
-  );
-}
-
-async function fetchWithProxy(rawUrl) {
-  for (let attempt = 0; attempt < PROXIES.length; attempt++) {
-    const idx   = (proxyIndex + attempt) % PROXIES.length;
-    const proxy = PROXIES[idx];
-
+/* ──────────── FETCH ONE INTERVAL ──────────── */
+async function fetchCloses(interval) {
+  // Try sources starting from the last one that worked
+  for (let i = 0; i < SOURCES.length; i++) {
+    const idx = (lastWorkingIdx + i) % SOURCES.length;
+    const src = SOURCES[idx];
     try {
-      const res = await fetch(proxy.build(rawUrl), {
-        signal: AbortSignal.timeout(9000),
+      const res = await fetch(src.url(interval), {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'Accept': 'application/json' },
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
+      // Parse response text → JSON (handles plain text JSON from some proxies)
       const text = await res.text();
-      let parsed;
-      try { parsed = JSON.parse(text); }
-      catch (_) { throw new Error('Response is not valid JSON'); }
+      let json;
+      try { json = JSON.parse(text); }
+      catch (_) { throw new Error('Non-JSON response'); }
 
-      const arr = extractArray(parsed);
-      if (!arr || arr.length === 0) throw new Error('Could not extract klines array');
+      // Unwrap proxy envelope
+      const klines = src.unwrap(json);
+      if (!klines || !Array.isArray(klines) || klines.length < 20) {
+        throw new Error(`Bad klines (got ${klines ? klines.length : 0})`);
+      }
 
-      // Sanity-check: first kline should have index [4] = close price string
-      if (arr[0] == null || arr[0][4] === undefined) throw new Error('Unexpected kline format');
+      // Validate first row looks like a Binance kline [timestamp, o, h, l, close, ...]
+      if (!Array.isArray(klines[0]) || klines[0][4] === undefined) {
+        throw new Error('Unexpected kline row format');
+      }
 
-      proxyIndex = idx; // remember working proxy
-      console.log(`[Signal] Using proxy: ${proxy.name}`);
-      return arr;
+      lastWorkingIdx = idx;
+      console.log(`[BTC Signal] ✓ ${src.name} → ${klines.length} candles (${interval})`);
+      return klines.map(k => parseFloat(k[4]));
 
     } catch (err) {
-      console.warn(`[Signal] Proxy "${proxy.name}" failed:`, err.message);
+      console.warn(`[BTC Signal] ✗ ${src.name} (${interval}): ${err.message}`);
     }
   }
-
-  throw new Error('All proxies failed. Check internet connection.');
+  throw new Error('All data sources failed for ' + interval);
 }
 
-async function fetchCloses(interval) {
-  const klines = await fetchWithProxy(buildBinanceUrl(interval));
-  return klines.map(k => parseFloat(k[4]));
-}
-
-// ──────────────────────────────────────────────
-// TECHNICAL INDICATORS (manual — no libraries)
-// ──────────────────────────────────────────────
-
+/* ──────────── INDICATORS (manual) ──────────── */
 function calcEMA(closes, period) {
   if (!closes || closes.length < period) return null;
   const k = 2 / (period + 1);
-  // Seed: SMA of first `period` values
-  let ema = closes.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  let ema = 0;
+  for (let i = 0; i < period; i++) ema += closes[i];
+  ema /= period;
   for (let i = period; i < closes.length; i++) {
     ema = closes[i] * k + ema * (1 - k);
   }
@@ -160,223 +137,175 @@ function calcEMA(closes, period) {
 
 function calcRSI(closes, period) {
   if (!closes || closes.length < period + 1) return null;
-  let gains = 0, losses = 0;
+  let gain = 0, loss = 0;
   for (let i = 1; i <= period; i++) {
     const d = closes[i] - closes[i - 1];
-    if (d >= 0) gains += d; else losses -= d;
+    if (d > 0) gain += d; else loss -= d;
   }
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
-  // Wilder smoothing
+  let ag = gain / period, al = loss / period;
   for (let i = period + 1; i < closes.length; i++) {
     const d = closes[i] - closes[i - 1];
-    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period;
-    avgLoss = (avgLoss * (period - 1) + (d < 0 ? -d : 0)) / period;
+    ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
+    al = (al * (period - 1) + (d < 0 ? -d : 0)) / period;
   }
-  if (avgLoss === 0) return 100;
-  return 100 - 100 / (1 + avgGain / avgLoss);
+  if (al === 0) return 100;
+  return 100 - 100 / (1 + ag / al);
 }
 
-function determineTrend(emaFast, emaSlow) {
-  if (emaFast === null || emaSlow === null) return 'SIDE';
-  const rel = (emaFast - emaSlow) / emaSlow;
-  if (rel >  0.0002) return 'UP';
-  if (rel < -0.0002) return 'DOWN';
+function trend(fast, slow) {
+  if (fast == null || slow == null) return 'SIDE';
+  const r = (fast - slow) / slow;
+  if (r >  0.0002) return 'UP';
+  if (r < -0.0002) return 'DOWN';
   return 'SIDE';
 }
 
-function rsiConfirmation(rsi) {
-  if (rsi === null) return 'NEUTRAL';
+function rsiZone(rsi) {
+  if (rsi == null) return 'NEUTRAL';
   if (rsi >= 52 && rsi <= 68) return 'BUY';
   if (rsi >= 32 && rsi <= 48) return 'SELL';
   return 'NEUTRAL';
 }
 
-// ──────────────────────────────────────────────
-// SIGNAL GENERATION
-// ──────────────────────────────────────────────
-
-function generateSignal(trend5m, trend15m, rsiZone) {
-  if (trend5m === 'UP' && trend15m === 'UP') {
-    return {
-      signal: 'STRONG BUY', type: 'buy', emoji: '🚀',
-      desc: (rsiZone === 'BUY' || rsiZone === 'NEUTRAL')
-        ? 'Both timeframes confirm UPTREND. RSI supports entry.'
-        : 'Both timeframes confirm UPTREND. RSI elevated — manage risk.',
-    };
-  }
-  if (trend5m === 'DOWN' && trend15m === 'DOWN') {
-    return {
-      signal: 'STRONG SELL', type: 'sell', emoji: '🔻',
-      desc: (rsiZone === 'SELL' || rsiZone === 'NEUTRAL')
-        ? 'Both timeframes confirm DOWNTREND. RSI supports entry.'
-        : 'Both timeframes confirm DOWNTREND. RSI low — monitor closely.',
-    };
-  }
-  let desc = 'Timeframes not aligned. Waiting for confirmation.';
-  if (trend5m === 'SIDE' && trend15m === 'SIDE') desc = 'Market ranging sideways on both timeframes.';
-  else if (trend5m !== trend15m) desc = `5M is ${trend5m}, 15M is ${trend15m}. No clear confluence.`;
-  return { signal: 'WAIT', type: 'wait', emoji: '⏳', desc };
+/* ──────────── SIGNAL ──────────── */
+function signal(t5, t15, rz) {
+  if (t5 === 'UP' && t15 === 'UP') return {
+    label: 'STRONG BUY', cls: 'buy', emoji: '🚀',
+    desc: (rz === 'BUY' || rz === 'NEUTRAL')
+      ? 'Both timeframes UPTREND confirmed. RSI supports entry.'
+      : 'Both timeframes UPTREND confirmed. RSI elevated — size carefully.',
+  };
+  if (t5 === 'DOWN' && t15 === 'DOWN') return {
+    label: 'STRONG SELL', cls: 'sell', emoji: '🔻',
+    desc: (rz === 'SELL' || rz === 'NEUTRAL')
+      ? 'Both timeframes DOWNTREND confirmed. RSI supports entry.'
+      : 'Both timeframes DOWNTREND confirmed. RSI low — monitor closely.',
+  };
+  const desc = t5 !== t15
+    ? `5M: ${t5} vs 15M: ${t15} — no confluence yet.`
+    : 'Market ranging sideways. Waiting for breakout.';
+  return { label: 'WAIT', cls: 'wait', emoji: '⏳', desc };
 }
 
-// ──────────────────────────────────────────────
-// UI
-// ──────────────────────────────────────────────
+/* ──────────── UI HELPERS ──────────── */
+const $ = id => document.getElementById(id);
+const set = (id, html) => { const e = $(id); if (e) e.innerHTML = html; };
+const fmt = n => (n == null || isNaN(n)) ? '—'
+  : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function fmt(num) {
-  if (num == null || isNaN(num)) return '—';
-  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function trendBadge(t) {
+  const m = { UP: ['bu','▲ UP'], DOWN: ['bd','▼ DOWN'], SIDE: ['by','◆ SIDE'] };
+  const [c, l] = m[t] || ['bn', '—'];
+  return `<span class="badge ${c}">${l}</span>`;
+}
+function crossBadge(f, s) {
+  if (f == null || s == null) return '<span class="badge bn">—</span>';
+  const d = (f - s).toFixed(2), c = f > s ? 'bu' : f < s ? 'bd' : 'by';
+  return `<span class="badge ${c}">${f > s ? '+' : ''}${d}</span>`;
+}
+function confirmBadge(t, rz) {
+  if (t === 'UP'   && (rz === 'BUY'  || rz === 'NEUTRAL')) return '<span class="badge bu">✓ YES</span>';
+  if (t === 'DOWN' && (rz === 'SELL' || rz === 'NEUTRAL')) return '<span class="badge bd">✓ YES</span>';
+  if (t === 'SIDE') return '<span class="badge bn">— N/A</span>';
+  return '<span class="badge by">⚠ MIXED</span>';
 }
 
-function setEl(id, html) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = html;
-}
-
-function trendTag(t) {
-  const m = { UP: ['tag-up','▲ UP'], DOWN: ['tag-down','▼ DOWN'], SIDE: ['tag-side','◆ SIDE'] };
-  const [c, l] = m[t] || ['tag-neutral','—'];
-  return `<span class="tag ${c}">${l}</span>`;
-}
-
-function crossTag(fast, slow) {
-  if (fast == null || slow == null) return '<span class="tag tag-neutral">—</span>';
-  const diff = (fast - slow).toFixed(2);
-  const cls  = fast > slow ? 'tag-up' : fast < slow ? 'tag-down' : 'tag-side';
-  return `<span class="tag ${cls}">${fast > slow ? '+' : ''}${diff}</span>`;
-}
-
-function confirmTag(trend, rsiZone) {
-  if (trend === 'UP'   && (rsiZone === 'BUY'  || rsiZone === 'NEUTRAL')) return '<span class="tag tag-up">✓ YES</span>';
-  if (trend === 'DOWN' && (rsiZone === 'SELL' || rsiZone === 'NEUTRAL')) return '<span class="tag tag-down">✓ YES</span>';
-  if (trend === 'SIDE') return '<span class="tag tag-neutral">— N/A</span>';
-  return '<span class="tag tag-side">⚠ MIXED</span>';
-}
-
-function updateUI(d) {
+/* ──────────── MAIN UPDATE ──────────── */
+function render(d) {
   // Price
-  const priceEl = document.getElementById('btc-price');
-  if (priceEl) {
-    priceEl.classList.remove('shimmer');
-    priceEl.textContent = '$' + fmt(d.price);
-    if (d.prev !== null) {
-      priceEl.style.color = d.price > d.prev ? 'var(--green)' : d.price < d.prev ? 'var(--red)' : '#fff';
-      setTimeout(() => { if (priceEl) priceEl.style.color = '#fff'; }, 800);
+  const pe = $('btc-price');
+  if (pe) {
+    pe.classList.remove('shimmer');
+    pe.textContent = '$' + fmt(d.price);
+    if (d.prev != null) {
+      pe.style.color = d.price > d.prev ? 'var(--g)' : d.price < d.prev ? 'var(--r)' : '#fff';
+      setTimeout(() => { if (pe) pe.style.color = '#fff'; }, 700);
     }
   }
-
-  if (d.prev !== null) {
-    const chg = d.price - d.prev;
-    const pct = ((chg / d.prev) * 100).toFixed(4);
-    const col = chg >= 0 ? 'var(--green)' : 'var(--red)';
-    setEl('btc-change', `<span style="color:${col}">${chg >= 0 ? '+' : ''}${fmt(chg)} (${chg >= 0 ? '+' : ''}${pct}%)</span> from last tick`);
+  if (d.prev != null) {
+    const ch = d.price - d.prev, pct = ((ch / d.prev) * 100).toFixed(4);
+    const col = ch >= 0 ? 'var(--g)' : 'var(--r)';
+    set('btc-change', `<span style="color:${col}">${ch >= 0 ? '+' : ''}${fmt(ch)} (${ch >= 0 ? '+' : ''}${pct}%)</span> from last tick`);
   }
-
-  setEl('last-updated', `LAST UPDATE: ${new Date().toLocaleTimeString('en-US', { hour12: false })}`);
+  set('last-updated', 'LAST UPDATE: ' + new Date().toLocaleTimeString('en-US', { hour12: false }));
 
   // Signal card
-  const card = document.getElementById('signal-card');
-  if (card) card.className = `signal-card ${d.signal.type}`;
-  const sigEl = document.getElementById('signal-text');
-  if (sigEl) { sigEl.classList.remove('shimmer'); sigEl.textContent = `${d.signal.emoji} ${d.signal.signal}`; }
-  setEl('signal-desc', d.signal.desc);
+  const card = $('signal-card');
+  if (card) card.className = 'signal-card ' + d.sig.cls;
+  const se = $('signal-text');
+  if (se) { se.classList.remove('shimmer'); se.textContent = d.sig.emoji + ' ' + d.sig.label; }
+  set('signal-desc', d.sig.desc);
 
   // EMA values
-  setEl('ema50-5m',   fmt(d.ema50_5m));
-  setEl('ema200-5m',  fmt(d.ema200_5m));
-  setEl('ema50-15m',  fmt(d.ema50_15m));
-  setEl('ema200-15m', fmt(d.ema200_15m));
+  set('ema50-5m',   fmt(d.e50_5));
+  set('ema200-5m',  fmt(d.e200_5));
+  set('ema50-15m',  fmt(d.e50_15));
+  set('ema200-15m', fmt(d.e200_15));
 
   // RSI bar
-  const rsiSafe = d.rsi !== null ? Math.min(100, Math.max(0, d.rsi)) : 50;
-  setEl('rsi-value', d.rsi !== null ? rsiSafe.toFixed(1) : '—');
-  const rsiPct = rsiSafe + '%';
-  const fillEl  = document.getElementById('rsi-fill');
-  const thumbEl = document.getElementById('rsi-thumb');
-  if (fillEl)  fillEl.style.width = rsiPct;
-  if (thumbEl) thumbEl.style.left = rsiPct;
+  const rv = d.rsi != null ? Math.min(100, Math.max(0, d.rsi)) : 50;
+  set('rsi-value', d.rsi != null ? rv.toFixed(1) : '—');
+  const rf = $('rsi-fill'), rt = $('rsi-thumb');
+  if (rf) rf.style.width = rv + '%';
+  if (rt) rt.style.left  = rv + '%';
 
   // Table
-  const rsiZone = rsiConfirmation(d.rsi);
-  setEl('trend-5m',    trendTag(d.trend5m));
-  setEl('cross-5m',    crossTag(d.ema50_5m, d.ema200_5m));
-  setEl('confirm-5m',  confirmTag(d.trend5m, rsiZone));
-  setEl('trend-15m',   trendTag(d.trend15m));
-  setEl('cross-15m',   crossTag(d.ema50_15m, d.ema200_15m));
-  setEl('confirm-15m', confirmTag(d.trend15m, rsiZone));
+  const rz = rsiZone(d.rsi);
+  set('trend-5m',    trendBadge(d.t5));
+  set('cross-5m',    crossBadge(d.e50_5,  d.e200_5));
+  set('confirm-5m',  confirmBadge(d.t5,  rz));
+  set('trend-15m',   trendBadge(d.t15));
+  set('cross-15m',   crossBadge(d.e50_15, d.e200_15));
+  set('confirm-15m', confirmBadge(d.t15, rz));
 
-  const errEl = document.getElementById('error-banner');
-  if (errEl) errEl.style.display = 'none';
+  const eb = $('error-banner');
+  if (eb) eb.style.display = 'none';
 }
 
-function showError(msg) {
-  const errEl = document.getElementById('error-banner');
-  if (errEl) { errEl.style.display = 'block'; errEl.textContent = `⚠ ${msg}`; }
-  console.error('[Signal Terminal]', msg);
+function showErr(msg) {
+  const eb = $('error-banner');
+  if (eb) { eb.style.display = 'block'; eb.textContent = '⚠ ' + msg; }
+  console.error('[BTC Signal]', msg);
 }
 
-// ──────────────────────────────────────────────
-// COUNTDOWN
-// ──────────────────────────────────────────────
-let countdownSec = 10;
-
+/* ──────────── COUNTDOWN ──────────── */
+let cdSec = 10;
 function startCountdown() {
-  countdownSec = 10;
-  clearInterval(countdownTimer);
-  updateCountdownUI();
-  countdownTimer = setInterval(() => {
-    countdownSec = Math.max(0, countdownSec - 1);
-    updateCountdownUI();
-  }, 1000);
+  cdSec = 10; clearInterval(countdownTimer); tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+function tick() {
+  cdSec = Math.max(0, cdSec - 1);
+  const n = $('countdown-num'), f = $('progress-fill');
+  if (n) n.textContent = cdSec + 's';
+  if (f) f.style.width = (cdSec / 10 * 100) + '%';
 }
 
-function updateCountdownUI() {
-  const n = document.getElementById('countdown-num');
-  const f = document.getElementById('progress-fill');
-  if (n) n.textContent  = countdownSec + 's';
-  if (f) f.style.width  = (countdownSec / 10 * 100) + '%';
-}
-
-// ──────────────────────────────────────────────
-// MAIN REFRESH
-// ──────────────────────────────────────────────
+/* ──────────── REFRESH ──────────── */
 async function refresh() {
   try {
-    const [closes5m, closes15m] = await Promise.all([
-      fetchCloses('5m'),
-      fetchCloses('15m'),
-    ]);
+    const [c5, c15] = await Promise.all([fetchCloses('5m'), fetchCloses('15m')]);
 
-    const price      = closes5m[closes5m.length - 1];
-    const ema50_5m   = calcEMA(closes5m,  CONFIG.emaFast);
-    const ema200_5m  = calcEMA(closes5m,  CONFIG.emaSlow);
-    const ema50_15m  = calcEMA(closes15m, CONFIG.emaFast);
-    const ema200_15m = calcEMA(closes15m, CONFIG.emaSlow);
-    const rsi        = calcRSI(closes5m,  CONFIG.rsiPeriod);
-    const trend5m    = determineTrend(ema50_5m,  ema200_5m);
-    const trend15m   = determineTrend(ema50_15m, ema200_15m);
-    const rsiZone    = rsiConfirmation(rsi);
-    const signal     = generateSignal(trend5m, trend15m, rsiZone);
+    const price   = c5[c5.length - 1];
+    const e50_5   = calcEMA(c5,  CFG.emaFast);
+    const e200_5  = calcEMA(c5,  CFG.emaSlow);
+    const e50_15  = calcEMA(c15, CFG.emaFast);
+    const e200_15 = calcEMA(c15, CFG.emaSlow);
+    const rsi     = calcRSI(c5,  CFG.rsiPeriod);
+    const t5      = trend(e50_5,  e200_5);
+    const t15     = trend(e50_15, e200_15);
+    const rz      = rsiZone(rsi);
+    const sig     = signal(t5, t15, rz);
 
-    updateUI({ price, prev: previousPrice, ema50_5m, ema200_5m, ema50_15m, ema200_15m, rsi, trend5m, trend15m, signal });
-    previousPrice = price;
-
+    render({ price, prev: prevPrice, e50_5, e200_5, e50_15, e200_15, rsi, t5, t15, sig });
+    prevPrice = price;
   } catch (err) {
-    showError(err.message || 'Unable to fetch market data. Retrying…');
+    showErr(err.message || 'Data fetch failed. Retrying…');
   }
   startCountdown();
 }
 
-// ──────────────────────────────────────────────
-// BOOT
-// ──────────────────────────────────────────────
-(function init() {
-  refresh();
-  setInterval(refresh, CONFIG.refreshMs);
-})();
-
-// ── Future hooks ────────────────────────────────
-// Gold: CONFIG.symbol = 'XAUUSDT'
-// Telegram: fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage?chat_id=${CHAT}&text=${msg}`)
-// S/R: closes.slice(-20) → Math.min/max
+/* ──────────── BOOT ──────────── */
+refresh();
+setInterval(refresh, CFG.refreshMs);
       
