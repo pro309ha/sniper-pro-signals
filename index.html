@@ -8,23 +8,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg:        #050a0f;
-      --surface:   #0b1520;
-      --panel:     #0f1e2e;
-      --border:    #1a3048;
-      --accent:    #00b4d8;
-      --green:     #00ff9d;
-      --red:       #ff4d4d;
-      --yellow:    #f0c040;
-      --muted:     #3a5a74;
-      --text:      #c8dce8;
-      --dim:       #5a7a8a;
-      --glow-g:    rgba(0,255,157,0.18);
-      --glow-r:    rgba(255,77,77,0.18);
-      --glow-y:    rgba(240,192,64,0.15);
-      --glow-a:    rgba(0,180,216,0.12);
+      --bg:     #050a0f;
+      --surf:   #0b1520;
+      --panel:  #0f1e2e;
+      --bdr:    #1a3048;
+      --acc:    #00b4d8;
+      --g:      #00ff9d;
+      --r:      #ff4d4d;
+      --y:      #f0c040;
+      --muted:  #3a5a74;
+      --text:   #c8dce8;
+      --dim:    #5a7a8a;
     }
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -34,518 +29,226 @@
       min-height: 100vh;
       overflow-x: hidden;
     }
-
-    /* ── Background grid ── */
     body::before {
       content: '';
-      position: fixed; inset: 0;
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background-image:
-        linear-gradient(rgba(0,180,216,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,180,216,0.03) 1px, transparent 1px);
+        linear-gradient(rgba(0,180,216,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,180,216,.03) 1px, transparent 1px);
       background-size: 40px 40px;
-      pointer-events: none; z-index: 0;
     }
-
-    /* ── Scanline overlay ── */
     body::after {
       content: '';
-      position: fixed; inset: 0;
-      background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0,0,0,0.07) 2px,
-        rgba(0,0,0,0.07) 4px
-      );
-      pointer-events: none; z-index: 0;
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px);
     }
 
-    .wrapper {
-      position: relative; z-index: 1;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 24px 16px 60px;
-    }
+    .wrap { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 20px 14px 60px; }
 
     /* ── Header ── */
     header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 0 28px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 28px;
-      flex-wrap: wrap; gap: 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px;
+      padding-bottom: 22px; margin-bottom: 22px;
+      border-bottom: 1px solid var(--bdr);
     }
-
     .logo {
-      font-family: 'Orbitron', monospace;
-      font-weight: 900;
-      font-size: clamp(1.1rem, 3.5vw, 1.5rem);
-      letter-spacing: 0.12em;
-      color: var(--accent);
-      text-shadow: 0 0 18px rgba(0,180,216,0.5);
+      font-family: 'Orbitron', monospace; font-weight: 900;
+      font-size: clamp(1.1rem, 4vw, 1.5rem); letter-spacing: .12em;
+      color: var(--acc); text-shadow: 0 0 18px rgba(0,180,216,.5);
     }
-    .logo span { color: var(--green); }
+    .logo span { color: var(--g); }
 
-    .status-pill {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72rem;
-      letter-spacing: 0.08em;
-      color: var(--green);
-      background: rgba(0,255,157,0.08);
-      border: 1px solid rgba(0,255,157,0.25);
-      border-radius: 50px;
-      padding: 5px 14px;
+    .live-pill {
+      font-family: 'Share Tech Mono', monospace; font-size: .7rem;
+      letter-spacing: .08em; color: var(--g);
+      background: rgba(0,255,157,.07); border: 1px solid rgba(0,255,157,.25);
+      border-radius: 50px; padding: 5px 14px;
       display: flex; align-items: center; gap: 7px;
     }
-    .dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--green);
-      animation: pulse 1.8s ease-in-out infinite;
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--g); animation: blink 1.8s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1;box-shadow:0 0 6px var(--g)} 50%{opacity:.4;box-shadow:none} }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surf); border: 1px solid var(--bdr); border-radius: 14px;
+      padding: 28px 20px; text-align: center; margin-bottom: 16px;
+      position: relative; overflow: hidden;
     }
-    @keyframes pulse {
-      0%,100% { opacity: 1; box-shadow: 0 0 6px var(--green); }
-      50%      { opacity: 0.4; box-shadow: none; }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--acc), transparent);
     }
 
-    /* ── Price hero ── */
-    .price-hero {
-      text-align: center;
-      padding: 32px 20px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      margin-bottom: 20px;
-      position: relative;
-      overflow: hidden;
-    }
-    .price-hero::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    }
-
-    .price-label {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.75rem;
-      letter-spacing: 0.18em;
-      color: var(--dim);
-      text-transform: uppercase;
+    .lbl {
+      font-family: 'Share Tech Mono', monospace; font-size: .68rem;
+      letter-spacing: .18em; color: var(--dim); text-transform: uppercase;
       margin-bottom: 10px;
     }
 
     #btc-price {
-      font-family: 'Orbitron', monospace;
-      font-weight: 700;
-      font-size: clamp(2.2rem, 8vw, 3.8rem);
-      color: #fff;
-      letter-spacing: 0.04em;
-      line-height: 1;
-      text-shadow: 0 0 30px rgba(0,180,216,0.3);
-      transition: color 0.4s;
+      font-family: 'Orbitron', monospace; font-weight: 700;
+      font-size: clamp(2rem, 8vw, 3.6rem); letter-spacing: .04em;
+      color: #fff; text-shadow: 0 0 28px rgba(0,180,216,.25);
+      transition: color .35s;
     }
-
-    #btc-change {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.85rem;
-      margin-top: 10px;
-      color: var(--dim);
-    }
-
-    #last-updated {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.68rem;
-      color: var(--muted);
-      margin-top: 14px;
-      letter-spacing: 0.06em;
-    }
+    #btc-change { font-family: 'Share Tech Mono', monospace; font-size: .8rem; color: var(--dim); margin-top: 8px; }
+    #last-updated { font-family: 'Share Tech Mono', monospace; font-size: .62rem; color: var(--muted); margin-top: 12px; letter-spacing: .06em; }
 
     /* ── Signal card ── */
-    .signal-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px 24px;
-      text-align: center;
-      margin-bottom: 20px;
-      position: relative;
-      overflow: hidden;
-      transition: border-color 0.5s, box-shadow 0.5s;
-    }
-
-    .signal-card.buy  { border-color: rgba(0,255,157,0.35); box-shadow: 0 0 40px var(--glow-g); }
-    .signal-card.sell { border-color: rgba(255,77,77,0.35);  box-shadow: 0 0 40px var(--glow-r); }
-    .signal-card.wait { border-color: rgba(240,192,64,0.25); box-shadow: 0 0 30px var(--glow-y); }
-
-    .signal-top-bar {
-      position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      transition: background 0.5s;
-    }
-    .buy  .signal-top-bar { background: linear-gradient(90deg, transparent, var(--green), transparent); }
-    .sell .signal-top-bar { background: linear-gradient(90deg, transparent, var(--red),   transparent); }
-    .wait .signal-top-bar { background: linear-gradient(90deg, transparent, var(--yellow), transparent); }
-
-    .signal-label {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72rem;
-      letter-spacing: 0.2em;
-      color: var(--dim);
-      text-transform: uppercase;
-      margin-bottom: 16px;
-    }
+    .signal-card { background: var(--surf); border: 1px solid var(--bdr); border-radius: 14px; padding: 28px 20px; text-align: center; margin-bottom: 16px; position: relative; overflow: hidden; transition: border-color .4s, box-shadow .4s; }
+    .signal-card .top-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; transition: background .4s; }
+    .signal-card.buy  { border-color: rgba(0,255,157,.35); box-shadow: 0 0 36px rgba(0,255,157,.15); }
+    .signal-card.sell { border-color: rgba(255,77,77,.35);  box-shadow: 0 0 36px rgba(255,77,77,.15); }
+    .signal-card.wait { border-color: rgba(240,192,64,.25); box-shadow: 0 0 28px rgba(240,192,64,.12); }
+    .buy  .top-bar { background: linear-gradient(90deg,transparent,var(--g),transparent); }
+    .sell .top-bar { background: linear-gradient(90deg,transparent,var(--r),transparent); }
+    .wait .top-bar { background: linear-gradient(90deg,transparent,var(--y),transparent); }
 
     #signal-text {
-      font-family: 'Orbitron', monospace;
-      font-weight: 900;
-      font-size: clamp(1.6rem, 6vw, 2.6rem);
-      letter-spacing: 0.08em;
-      transition: color 0.4s, text-shadow 0.4s;
+      font-family: 'Orbitron', monospace; font-weight: 900;
+      font-size: clamp(1.5rem, 5.5vw, 2.4rem); letter-spacing: .08em;
+      transition: color .4s, text-shadow .4s;
     }
-    .buy  #signal-text { color: var(--green); text-shadow: 0 0 24px rgba(0,255,157,0.6); }
-    .sell #signal-text { color: var(--red);   text-shadow: 0 0 24px rgba(255,77,77,0.6); }
-    .wait #signal-text { color: var(--yellow);text-shadow: 0 0 18px rgba(240,192,64,0.5); }
+    .buy  #signal-text { color: var(--g); text-shadow: 0 0 22px rgba(0,255,157,.55); }
+    .sell #signal-text { color: var(--r); text-shadow: 0 0 22px rgba(255,77,77,.55); }
+    .wait #signal-text { color: var(--y); text-shadow: 0 0 16px rgba(240,192,64,.45); }
+    #signal-desc { font-size: .82rem; color: var(--dim); margin-top: 10px; font-weight: 300; }
 
-    #signal-desc {
-      font-size: 0.85rem;
-      color: var(--dim);
-      margin-top: 12px;
-      font-weight: 300;
-    }
-
-    /* ── Grid of metric cards ── */
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 14px;
-      margin-bottom: 20px;
-    }
-
-    .metric-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px 16px;
-      position: relative;
-      overflow: hidden;
-    }
-    .metric-card::after {
-      content: '';
-      position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-      opacity: 0.2;
-    }
-
-    .metric-title {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.65rem;
-      letter-spacing: 0.16em;
-      color: var(--muted);
-      text-transform: uppercase;
-      margin-bottom: 10px;
-    }
-
-    .metric-value {
-      font-family: 'Orbitron', monospace;
-      font-weight: 700;
-      font-size: 1.05rem;
-      color: var(--text);
-    }
-
-    .metric-sub {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.68rem;
-      color: var(--dim);
-      margin-top: 5px;
-    }
-
-    .tag {
-      display: inline-block;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.65rem;
-      letter-spacing: 0.08em;
-      padding: 3px 9px;
-      border-radius: 4px;
-      margin-top: 6px;
-    }
-    .tag-up   { background: rgba(0,255,157,0.1);  color: var(--green); border: 1px solid rgba(0,255,157,0.25); }
-    .tag-down { background: rgba(255,77,77,0.1);  color: var(--red);   border: 1px solid rgba(255,77,77,0.25); }
-    .tag-side { background: rgba(240,192,64,0.08);color: var(--yellow);border: 1px solid rgba(240,192,64,0.2); }
-    .tag-neutral { background: rgba(90,122,138,0.12); color: var(--dim); border: 1px solid var(--border); }
-
-    /* ── RSI bar ── */
-    .rsi-bar-wrap {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px 20px;
-      margin-bottom: 20px;
-    }
-    .rsi-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 14px;
-    }
-    .rsi-title {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72rem;
-      letter-spacing: 0.14em;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-    #rsi-value {
-      font-family: 'Orbitron', monospace;
-      font-weight: 700;
-      font-size: 1rem;
-      color: var(--text);
-    }
-    .rsi-track {
-      height: 8px;
-      background: rgba(255,255,255,0.05);
-      border-radius: 999px;
-      position: relative;
-      overflow: visible;
-    }
-    /* Zone coloring */
-    .rsi-track::before {
-      content: '';
-      position: absolute; left: 0; top: 0; bottom: 0;
-      width: 30%; /* oversold < 30 */
-      background: rgba(255,77,77,0.15);
-      border-radius: 999px 0 0 999px;
-    }
-    .rsi-track::after {
-      content: '';
-      position: absolute; right: 0; top: 0; bottom: 0;
-      width: 30%; /* overbought > 70 */
-      background: rgba(0,255,157,0.1);
-      border-radius: 0 999px 999px 0;
-    }
-    .rsi-fill {
-      position: absolute; left: 0; top: 0; bottom: 0;
-      background: linear-gradient(90deg, var(--red), var(--yellow), var(--green));
-      border-radius: 999px;
-      transition: width 0.6s ease;
-    }
-    .rsi-thumb {
-      position: absolute; top: 50%;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: #fff;
-      border: 2px solid var(--accent);
-      transform: translate(-50%, -50%);
-      transition: left 0.6s ease;
-      box-shadow: 0 0 8px rgba(0,180,216,0.5);
-      z-index: 2;
-    }
-    .rsi-labels {
-      display: flex; justify-content: space-between;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.6rem; color: var(--muted);
-      margin-top: 8px;
-    }
-
-    /* ── Timeframe detail table ── */
-    .tf-table {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      margin-bottom: 20px;
-    }
-    .tf-row {
-      display: grid;
-      grid-template-columns: 80px 1fr 1fr 1fr;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--border);
-      align-items: center;
-    }
-    .tf-row:last-child { border-bottom: none; }
-    .tf-row.header {
-      background: rgba(0,0,0,0.2);
-    }
-    .tf-head {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.62rem;
-      letter-spacing: 0.12em;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-    .tf-label {
-      font-family: 'Orbitron', monospace;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: var(--accent);
-    }
-    .tf-val {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.75rem;
-      color: var(--text);
-    }
-
-    /* ── Countdown ring ── */
-    .countdown-wrap {
-      display: flex; align-items: center; gap: 10px;
-      justify-content: center;
-      margin-bottom: 28px;
-    }
-    .countdown-label {
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.68rem;
-      letter-spacing: 0.1em;
-      color: var(--dim);
-    }
-    #countdown-num {
-      font-family: 'Orbitron', monospace;
-      font-size: 0.9rem;
-      color: var(--accent);
-    }
-    .progress-track {
-      width: 140px; height: 4px;
-      background: rgba(255,255,255,0.06);
-      border-radius: 999px; overflow: hidden;
-    }
-    #progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--green));
-      border-radius: 999px;
-      transition: width 0.9s linear;
-    }
-
-    /* ── Error banner ── */
+    /* ── Error ── */
     #error-banner {
       display: none;
-      background: rgba(255,77,77,0.08);
-      border: 1px solid rgba(255,77,77,0.3);
-      border-radius: 10px;
-      padding: 12px 18px;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72rem;
-      color: var(--red);
-      margin-bottom: 16px;
-      text-align: center;
+      background: rgba(255,77,77,.08); border: 1px solid rgba(255,77,77,.3);
+      border-radius: 10px; padding: 11px 16px;
+      font-family: 'Share Tech Mono', monospace; font-size: .7rem;
+      color: var(--r); margin-bottom: 14px; text-align: center;
     }
 
-    /* ── Footer ── */
-    footer {
-      text-align: center;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.62rem;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      padding-top: 20px;
-      border-top: 1px solid var(--border);
-    }
-    footer span { color: var(--dim); }
+    /* ── RSI ── */
+    .rsi-wrap { background: var(--panel); border: 1px solid var(--bdr); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+    .rsi-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .rsi-title { font-family: 'Share Tech Mono', monospace; font-size: .68rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+    #rsi-value { font-family: 'Orbitron', monospace; font-weight: 700; font-size: .95rem; color: var(--text); }
+    .rsi-track { height: 8px; background: rgba(255,255,255,.05); border-radius: 999px; position: relative; overflow: visible; }
+    .rsi-track::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 30%; background: rgba(255,77,77,.12); border-radius: 999px 0 0 999px; }
+    .rsi-track::after  { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 30%; background: rgba(0,255,157,.08); border-radius: 0 999px 999px 0; }
+    #rsi-fill  { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg,var(--r),var(--y),var(--g)); border-radius: 999px; transition: width .6s ease; }
+    #rsi-thumb { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid var(--acc); transform: translate(-50%,-50%); transition: left .6s ease; box-shadow: 0 0 8px rgba(0,180,216,.5); z-index: 2; }
+    .rsi-lbls  { display: flex; justify-content: space-between; font-family: 'Share Tech Mono', monospace; font-size: .58rem; color: var(--muted); margin-top: 7px; }
 
-    /* ── Loading shimmer ── */
+    /* ── Metric grid ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .metric { background: var(--panel); border: 1px solid var(--bdr); border-radius: 12px; padding: 16px 14px; }
+    .m-title { font-family: 'Share Tech Mono', monospace; font-size: .62rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; margin-bottom: 9px; }
+    .m-val   { font-family: 'Orbitron', monospace; font-weight: 700; font-size: 1rem; color: var(--text); }
+    .m-sub   { font-family: 'Share Tech Mono', monospace; font-size: .62rem; color: var(--dim); margin-top: 4px; }
+
+    /* ── Table ── */
+    .tf-table { background: var(--panel); border: 1px solid var(--bdr); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+    .tf-row { display: grid; grid-template-columns: 72px 1fr 1fr 1fr; padding: 13px 16px; border-bottom: 1px solid var(--bdr); align-items: center; }
+    .tf-row:last-child { border-bottom: none; }
+    .tf-row.hdr { background: rgba(0,0,0,.2); }
+    .th { font-family: 'Share Tech Mono', monospace; font-size: .6rem; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+    .tf-lbl { font-family: 'Orbitron', monospace; font-size: .72rem; font-weight: 700; color: var(--acc); }
+    .tf-val { font-family: 'Share Tech Mono', monospace; font-size: .72rem; color: var(--text); }
+
+    /* ── Badges (bu=buy/green, bd=sell/red, by=wait/yellow, bn=neutral) ── */
+    .badge {
+      display: inline-block; font-family: 'Share Tech Mono', monospace;
+      font-size: .62rem; letter-spacing: .07em; padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .bu { background: rgba(0,255,157,.10);  color: var(--g); border: 1px solid rgba(0,255,157,.25); }
+    .bd { background: rgba(255,77,77,.10);  color: var(--r); border: 1px solid rgba(255,77,77,.25); }
+    .by { background: rgba(240,192,64,.08); color: var(--y); border: 1px solid rgba(240,192,64,.2); }
+    .bn { background: rgba(90,122,138,.1);  color: var(--dim); border: 1px solid var(--bdr); }
+
+    /* ── Countdown ── */
+    .cd-wrap { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 24px; }
+    .cd-lbl  { font-family: 'Share Tech Mono', monospace; font-size: .65rem; letter-spacing: .1em; color: var(--dim); }
+    #countdown-num { font-family: 'Orbitron', monospace; font-size: .88rem; color: var(--acc); }
+    .cd-track { width: 130px; height: 4px; background: rgba(255,255,255,.06); border-radius: 999px; overflow: hidden; }
+    #progress-fill { height: 100%; background: linear-gradient(90deg,var(--acc),var(--g)); border-radius: 999px; transition: width .9s linear; }
+
+    /* ── Shimmer ── */
     .shimmer {
-      background: linear-gradient(90deg, var(--panel) 25%, var(--border) 50%, var(--panel) 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s infinite;
-      border-radius: 6px;
-      display: inline-block;
-      color: transparent !important;
+      background: linear-gradient(90deg,var(--panel) 25%,var(--bdr) 50%,var(--panel) 75%);
+      background-size: 200% 100%; animation: sh 1.4s infinite;
+      border-radius: 6px; color: transparent !important; display: inline-block; min-width: 160px; min-height: 1em;
     }
-    @keyframes shimmer {
-      0%   { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
+    @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-    /* ── Responsive ── */
-    @media (max-width: 480px) {
-      .tf-row { grid-template-columns: 60px 1fr 1fr 1fr; gap: 4px; padding: 12px 10px; }
-      .metrics-grid { grid-template-columns: 1fr 1fr; }
+    footer { text-align: center; font-family: 'Share Tech Mono', monospace; font-size: .6rem; letter-spacing: .1em; color: var(--muted); padding-top: 18px; border-top: 1px solid var(--bdr); }
+
+    @media(max-width:480px) {
+      .tf-row { grid-template-columns: 56px 1fr 1fr 1fr; padding: 11px 10px; }
+      .grid   { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
-<div class="wrapper">
+<div class="wrap">
 
   <header>
     <div class="logo">BTC<span>/</span>SIGNAL</div>
-    <div class="status-pill"><span class="dot"></span> LIVE FEED</div>
+    <div class="live-pill"><span class="dot"></span> LIVE FEED</div>
   </header>
 
-  <!-- Price Hero -->
-  <div class="price-hero">
-    <div class="price-label">BTC / USDT · BINANCE SPOT</div>
+  <!-- Price -->
+  <div class="card">
+    <div class="lbl">BTC / USDT · BINANCE SPOT</div>
     <div id="btc-price" class="shimmer">$——,———</div>
     <div id="btc-change"></div>
     <div id="last-updated">WAITING FOR DATA…</div>
   </div>
 
-  <!-- Signal Card -->
+  <!-- Signal -->
   <div class="signal-card wait" id="signal-card">
-    <div class="signal-top-bar"></div>
-    <div class="signal-label">TRADING SIGNAL</div>
+    <div class="top-bar"></div>
+    <div class="lbl">TRADING SIGNAL</div>
     <div id="signal-text" class="shimmer">LOADING…</div>
     <div id="signal-desc">Fetching market data…</div>
   </div>
 
-  <!-- Error Banner -->
-  <div id="error-banner">⚠ DATA FETCH ERROR — RETRYING…</div>
+  <!-- Error -->
+  <div id="error-banner"></div>
 
-  <!-- RSI Bar -->
-  <div class="rsi-bar-wrap">
-    <div class="rsi-header">
+  <!-- RSI -->
+  <div class="rsi-wrap">
+    <div class="rsi-head">
       <div class="rsi-title">RSI (14) · 5-MIN</div>
       <div id="rsi-value">—</div>
     </div>
     <div class="rsi-track">
-      <div class="rsi-fill" id="rsi-fill" style="width:50%"></div>
-      <div class="rsi-thumb" id="rsi-thumb" style="left:50%"></div>
+      <div id="rsi-fill"  style="width:50%"></div>
+      <div id="rsi-thumb" style="left:50%"></div>
     </div>
-    <div class="rsi-labels">
-      <span>0 · OVERSOLD</span>
-      <span>30</span>
-      <span>50</span>
-      <span>70</span>
-      <span>OVERBOUGHT · 100</span>
+    <div class="rsi-lbls">
+      <span>0 · OVERSOLD</span><span>30</span><span>50</span><span>70</span><span>OVERBOUGHT · 100</span>
     </div>
   </div>
 
-  <!-- Metrics Grid -->
-  <div class="metrics-grid">
-    <div class="metric-card">
-      <div class="metric-title">EMA 50 · 5M</div>
-      <div class="metric-value" id="ema50-5m">—</div>
-      <div class="metric-sub">Short-term fast MA</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-title">EMA 200 · 5M</div>
-      <div class="metric-value" id="ema200-5m">—</div>
-      <div class="metric-sub">Short-term slow MA</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-title">EMA 50 · 15M</div>
-      <div class="metric-value" id="ema50-15m">—</div>
-      <div class="metric-sub">Mid-term fast MA</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-title">EMA 200 · 15M</div>
-      <div class="metric-value" id="ema200-15m">—</div>
-      <div class="metric-sub">Mid-term slow MA</div>
-    </div>
+  <!-- EMA grid -->
+  <div class="grid">
+    <div class="metric"><div class="m-title">EMA 50 · 5M</div>  <div class="m-val" id="ema50-5m">—</div>  <div class="m-sub">Short-term fast</div></div>
+    <div class="metric"><div class="m-title">EMA 200 · 5M</div> <div class="m-val" id="ema200-5m">—</div> <div class="m-sub">Short-term slow</div></div>
+    <div class="metric"><div class="m-title">EMA 50 · 15M</div> <div class="m-val" id="ema50-15m">—</div> <div class="m-sub">Mid-term fast</div></div>
+    <div class="metric"><div class="m-title">EMA 200 · 15M</div><div class="m-val" id="ema200-15m">—</div><div class="m-sub">Mid-term slow</div></div>
   </div>
 
-  <!-- Timeframe Detail Table -->
+  <!-- TF Table -->
   <div class="tf-table">
-    <div class="tf-row header">
-      <div class="tf-head">FRAME</div>
-      <div class="tf-head">TREND</div>
-      <div class="tf-head">EMA CROSS</div>
-      <div class="tf-head">CONFIRM</div>
+    <div class="tf-row hdr">
+      <div class="th">FRAME</div><div class="th">TREND</div><div class="th">EMA CROSS</div><div class="th">CONFIRM</div>
     </div>
     <div class="tf-row">
-      <div class="tf-label">5 MIN</div>
+      <div class="tf-lbl">5 MIN</div>
       <div class="tf-val" id="trend-5m">—</div>
       <div class="tf-val" id="cross-5m">—</div>
       <div class="tf-val" id="confirm-5m">—</div>
     </div>
     <div class="tf-row">
-      <div class="tf-label">15 MIN</div>
+      <div class="tf-lbl">15 MIN</div>
       <div class="tf-val" id="trend-15m">—</div>
       <div class="tf-val" id="cross-15m">—</div>
       <div class="tf-val" id="confirm-15m">—</div>
@@ -553,18 +256,19 @@
   </div>
 
   <!-- Countdown -->
-  <div class="countdown-wrap">
-    <div class="countdown-label">NEXT REFRESH IN</div>
+  <div class="cd-wrap">
+    <div class="cd-lbl">NEXT REFRESH IN</div>
     <div id="countdown-num">10s</div>
-    <div class="progress-track"><div id="progress-fill" style="width:100%"></div></div>
+    <div class="cd-track"><div id="progress-fill" style="width:100%"></div></div>
   </div>
 
   <footer>
-    <span>BTC SIGNAL TERMINAL</span> · DATA: BINANCE API · INDICATORS: EMA50 / EMA200 / RSI14<br>
-    <span style="color:#2a4a5a;margin-top:6px;display:block;">⚠ NOT FINANCIAL ADVICE · FOR EDUCATIONAL USE ONLY</span>
+    BTC SIGNAL TERMINAL · BINANCE API · EMA50 / EMA200 / RSI14<br>
+    <span style="color:#1e3a50;margin-top:5px;display:block">⚠ NOT FINANCIAL ADVICE · EDUCATIONAL USE ONLY</span>
   </footer>
 
 </div>
 <script src="script.js"></script>
 </body>
-</html>
+  </html>
+  
