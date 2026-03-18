@@ -1,311 +1,554 @@
 /**
- * BTC/USDT Signal Terminal — script.js v3
- * ────────────────────────────────────────
- * Strategy: Try multiple API sources in order.
- * Source 1: Binance directly (works on many mobile browsers / networks)
- * Source 2: Binance via corsproxy.io  — returns raw array
- * Source 3: Binance via allorigins    — wraps in {contents:"[...]"}
- * Source 4: Binance via cors-anywhere (public demo)
- * Source 5: CoinGecko (price only fallback)
+ * SNIPER PRO — script.js
+ * ══════════════════════════════════════════════════════
+ * BTC/USDT signal terminal with EMA50/200 + RSI14
+ * Data sources (tried in order, all have open CORS):
+ *   1. Bybit  v5  REST  — api.bybit.com
+ *   2. OKX    v5  REST  — www.okx.com
+ *   3. KuCoin v1  REST  — api.kucoin.com
+ * Price overlay: CoinGecko simple/price (24h change)
  *
- * extractKlines() safely unwraps ANY proxy wrapper format.
+ * No external libraries. Pure vanilla JS.
+ * ══════════════════════════════════════════════════════
  */
 
 'use strict';
 
-/* ──────────── CONFIG ──────────── */
+/* ──────────────────────────────────────────────────────
+   CONFIG
+   Change SYMBOL/GOLD_SYMBOL here for future instruments.
+   ────────────────────────────────────────────────────── */
 const CFG = {
-  symbol:      'BTCUSDT',
-  emaFast:     50,
-  emaSlow:     200,
-  rsiPeriod:   14,
-  refreshMs:   10000,
-  limit:       210,
+  SYMBOL:      'BTCUSDT',    // base trading pair (Bybit/OKX format)
+  SYMBOL_KC:   'BTC-USDT',   // KuCoin format
+  CG_ID:       'bitcoin',    // CoinGecko coin id
+  EMA_FAST:    50,
+  EMA_SLOW:    200,
+  RSI_PERIOD:  14,
+  CANDLE_LIMIT:220,          // must be > EMA_SLOW + buffer
+  REFRESH_MS:  10000,        // 10 seconds
 };
 
-/* ──────────── STATE ──────────── */
-let prevPrice      = null;
-let countdownTimer = null;
-let lastWorkingIdx = 0;
+/* ──────────────────────────────────────────────────────
+   FUTURE HOOKS (Gold / XAU support stub)
+   Swap CFG values and call refresh() to switch symbol.
+   ────────────────────────────────────────────────────── */
+// const GOLD_CFG = { SYMBOL:'XAUUSDT', SYMBOL_KC:'XAU-USDT', CG_ID:'gold', ... };
 
-/* ──────────── API SOURCES ──────────── */
-/*
- * Each source has:
- *   url(interval)  – builds the full URL to fetch
- *   unwrap(data)   – extracts klines array from whatever is returned
+/* ──────────────────────────────────────────────────────
+   FUTURE HOOK — Telegram alert stub
+   Fill BOT_TOKEN + CHAT_ID and call sendTelegram().
+   ────────────────────────────────────────────────────── */
+// const TG = { BOT_TOKEN: '', CHAT_ID: '' };
+// async function sendTelegram(msg) {
+//   if (!TG.BOT_TOKEN) return;
+//   const url = `https://api.telegram.org/bot${TG.BOT_TOKEN}/sendMessage`
+//             + `?chat_id=${TG.CHAT_ID}&text=${encodeURIComponent(msg)}`;
+//   await fetch(url).catch(()=>{});
+// }
+
+/* ──────────────────────────────────────────────────────
+   STATE
+   ────────────────────────────────────────────────────── */
+let prevPrice    = null;
+let cdSec        = 10;
+let cdTimer      = null;
+let refreshTimer = null;
+let lastSrcName  = '—';
+
+/* ══════════════════════════════════════════════════════
+   INDICATOR MATH  (zero dependencies)
+══════════════════════════════════════════════════════ */
+
+/**
+ * Exponential Moving Average
+ * Seeds with SMA of first `period` values, then applies
+ * Wilder/EMA smoothing for the remainder.
+ * @param {number[]} closes - oldest-first array
+ * @param {number}   period
+ * @returns {number|null}
  */
-const SOURCES = [
-  /* ① Direct Binance — no CORS header needed on many Android browsers */
-  {
-    name: 'Binance Direct',
-    url:  iv => `https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`,
-    unwrap: d => Array.isArray(d) ? d : null,
-  },
-  /* ② Binance US mirror — different domain, sometimes less restrictive */
-  {
-    name: 'Binance US',
-    url:  iv => `https://api.binance.us/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`,
-    unwrap: d => Array.isArray(d) ? d : null,
-  },
-  /* ③ corsproxy.io — returns JSON as-is */
-  {
-    name: 'corsproxy.io',
-    url:  iv => `https://corsproxy.io/?${encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`)}`,
-    unwrap: d => Array.isArray(d) ? d : null,
-  },
-  /* ④ allorigins /get — wraps body in { contents: "..." } */
-  {
-    name: 'allorigins /get',
-    url:  iv => `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`)}`,
-    unwrap: d => {
-      try {
-        if (d && typeof d.contents === 'string') {
-          const p = JSON.parse(d.contents);
-          return Array.isArray(p) ? p : null;
-        }
-      } catch (_) {}
-      return null;
-    },
-  },
-  /* ⑤ allorigins /raw — returns raw text of JSON */
-  {
-    name: 'allorigins /raw',
-    url:  iv => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`)}`,
-    unwrap: d => Array.isArray(d) ? d : null,
-  },
-  /* ⑥ htmldriven cors-anywhere public demo */
-  {
-    name: 'cors-anywhere',
-    url:  iv => `https://cors-anywhere.herokuapp.com/https://api.binance.com/api/v3/klines?symbol=${CFG.symbol}&interval=${iv}&limit=${CFG.limit}`,
-    unwrap: d => Array.isArray(d) ? d : null,
-  },
-];
-
-/* ──────────── FETCH ONE INTERVAL ──────────── */
-async function fetchCloses(interval) {
-  // Try sources starting from the last one that worked
-  for (let i = 0; i < SOURCES.length; i++) {
-    const idx = (lastWorkingIdx + i) % SOURCES.length;
-    const src = SOURCES[idx];
-    try {
-      const res = await fetch(src.url(interval), {
-        signal: AbortSignal.timeout(8000),
-        headers: { 'Accept': 'application/json' },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      // Parse response text → JSON (handles plain text JSON from some proxies)
-      const text = await res.text();
-      let json;
-      try { json = JSON.parse(text); }
-      catch (_) { throw new Error('Non-JSON response'); }
-
-      // Unwrap proxy envelope
-      const klines = src.unwrap(json);
-      if (!klines || !Array.isArray(klines) || klines.length < 20) {
-        throw new Error(`Bad klines (got ${klines ? klines.length : 0})`);
-      }
-
-      // Validate first row looks like a Binance kline [timestamp, o, h, l, close, ...]
-      if (!Array.isArray(klines[0]) || klines[0][4] === undefined) {
-        throw new Error('Unexpected kline row format');
-      }
-
-      lastWorkingIdx = idx;
-      console.log(`[BTC Signal] ✓ ${src.name} → ${klines.length} candles (${interval})`);
-      return klines.map(k => parseFloat(k[4]));
-
-    } catch (err) {
-      console.warn(`[BTC Signal] ✗ ${src.name} (${interval}): ${err.message}`);
-    }
-  }
-  throw new Error('All data sources failed for ' + interval);
-}
-
-/* ──────────── INDICATORS (manual) ──────────── */
 function calcEMA(closes, period) {
   if (!closes || closes.length < period) return null;
   const k = 2 / (period + 1);
+  // Seed: simple average of first `period` candles
   let ema = 0;
   for (let i = 0; i < period; i++) ema += closes[i];
   ema /= period;
+  // Smooth remaining values
   for (let i = period; i < closes.length; i++) {
     ema = closes[i] * k + ema * (1 - k);
   }
   return ema;
 }
 
+/**
+ * Relative Strength Index (Wilder smoothing)
+ * @param {number[]} closes - oldest-first array
+ * @param {number}   period
+ * @returns {number|null}
+ */
 function calcRSI(closes, period) {
   if (!closes || closes.length < period + 1) return null;
-  let gain = 0, loss = 0;
+  let gains = 0, losses = 0;
+  // Initial period
   for (let i = 1; i <= period; i++) {
     const d = closes[i] - closes[i - 1];
-    if (d > 0) gain += d; else loss -= d;
+    if (d >= 0) gains += d; else losses -= d;
   }
-  let ag = gain / period, al = loss / period;
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  // Wilder smoothing for remaining candles
   for (let i = period + 1; i < closes.length; i++) {
     const d = closes[i] - closes[i - 1];
-    ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
-    al = (al * (period - 1) + (d < 0 ? -d : 0)) / period;
+    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (d < 0 ? -d : 0)) / period;
   }
-  if (al === 0) return 100;
-  return 100 - 100 / (1 + ag / al);
+  if (avgLoss === 0) return 100;
+  return 100 - 100 / (1 + avgGain / avgLoss);
 }
 
-function trend(fast, slow) {
-  if (fast == null || slow == null) return 'SIDE';
-  const r = (fast - slow) / slow;
-  if (r >  0.0002) return 'UP';
-  if (r < -0.0002) return 'DOWN';
+/**
+ * Trend direction from two EMA values.
+ * Uses a tiny relative threshold (0.02%) to avoid SIDE on noise.
+ * @returns {'UP'|'DOWN'|'SIDE'}
+ */
+function getTrend(emaFast, emaSlow) {
+  if (emaFast == null || emaSlow == null) return 'SIDE';
+  const rel = (emaFast - emaSlow) / emaSlow;
+  if (rel >  0.0002) return 'UP';
+  if (rel < -0.0002) return 'DOWN';
   return 'SIDE';
 }
 
-function rsiZone(rsi) {
+/**
+ * RSI zone for optional confirmation.
+ * @returns {'BUY'|'SELL'|'NEUTRAL'}
+ */
+function getRsiZone(rsi) {
   if (rsi == null) return 'NEUTRAL';
   if (rsi >= 52 && rsi <= 68) return 'BUY';
   if (rsi >= 32 && rsi <= 48) return 'SELL';
   return 'NEUTRAL';
 }
 
-/* ──────────── SIGNAL ──────────── */
-function signal(t5, t15, rz) {
-  if (t5 === 'UP' && t15 === 'UP') return {
-    label: 'STRONG BUY', cls: 'buy', emoji: '🚀',
-    desc: (rz === 'BUY' || rz === 'NEUTRAL')
-      ? 'Both timeframes UPTREND confirmed. RSI supports entry.'
-      : 'Both timeframes UPTREND confirmed. RSI elevated — size carefully.',
+/**
+ * Generate the trading signal from both timeframe trends + RSI.
+ * Core rule: ONLY fire when BOTH timeframes agree.
+ * RSI provides an extra-confidence note but doesn't block the signal.
+ */
+function generateSignal(trend5m, trend15m, rsiZone) {
+  if (trend5m === 'UP' && trend15m === 'UP') {
+    const rsiOk = rsiZone === 'BUY' || rsiZone === 'NEUTRAL';
+    return {
+      type:  'buy',
+      label: 'STRONG BUY',
+      emoji: '🚀',
+      desc:  rsiOk
+        ? 'Both timeframes confirm UPTREND. RSI in buy zone. Entry confirmed.'
+        : 'Both timeframes confirm UPTREND. RSI elevated — size position carefully.',
+    };
+  }
+  if (trend5m === 'DOWN' && trend15m === 'DOWN') {
+    const rsiOk = rsiZone === 'SELL' || rsiZone === 'NEUTRAL';
+    return {
+      type:  'sell',
+      label: 'STRONG SELL',
+      emoji: '🔻',
+      desc:  rsiOk
+        ? 'Both timeframes confirm DOWNTREND. RSI in sell zone. Entry confirmed.'
+        : 'Both timeframes confirm DOWNTREND. RSI low — monitor for reversal.',
+    };
+  }
+  // Mixed or sideways
+  if (trend5m !== trend15m && trend5m !== 'SIDE' && trend15m !== 'SIDE') {
+    return {
+      type:  'wait',
+      label: 'WAIT',
+      emoji: '⏳',
+      desc:  `Conflicting signals — 5M is ${trend5m}, 15M is ${trend15m}. No entry.`,
+    };
+  }
+  return {
+    type:  'wait',
+    label: 'WAIT',
+    emoji: '⏳',
+    desc:  'Market ranging sideways. Waiting for trend confirmation.',
   };
-  if (t5 === 'DOWN' && t15 === 'DOWN') return {
-    label: 'STRONG SELL', cls: 'sell', emoji: '🔻',
-    desc: (rz === 'SELL' || rz === 'NEUTRAL')
-      ? 'Both timeframes DOWNTREND confirmed. RSI supports entry.'
-      : 'Both timeframes DOWNTREND confirmed. RSI low — monitor closely.',
-  };
-  const desc = t5 !== t15
-    ? `5M: ${t5} vs 15M: ${t15} — no confluence yet.`
-    : 'Market ranging sideways. Waiting for breakout.';
-  return { label: 'WAIT', cls: 'wait', emoji: '⏳', desc };
 }
 
-/* ──────────── UI HELPERS ──────────── */
-const $ = id => document.getElementById(id);
-const set = (id, html) => { const e = $(id); if (e) e.innerHTML = html; };
-const fmt = n => (n == null || isNaN(n)) ? '—'
-  : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/* ══════════════════════════════════════════════════════
+   DATA SOURCES
+   All three APIs have open Access-Control-Allow-Origin: *
+   headers — no proxy needed, works from any browser.
+══════════════════════════════════════════════════════ */
 
-function trendBadge(t) {
-  const m = { UP: ['bu','▲ UP'], DOWN: ['bd','▼ DOWN'], SIDE: ['by','◆ SIDE'] };
-  const [c, l] = m[t] || ['bn', '—'];
-  return `<span class="badge ${c}">${l}</span>`;
-}
-function crossBadge(f, s) {
-  if (f == null || s == null) return '<span class="badge bn">—</span>';
-  const d = (f - s).toFixed(2), c = f > s ? 'bu' : f < s ? 'bd' : 'by';
-  return `<span class="badge ${c}">${f > s ? '+' : ''}${d}</span>`;
-}
-function confirmBadge(t, rz) {
-  if (t === 'UP'   && (rz === 'BUY'  || rz === 'NEUTRAL')) return '<span class="badge bu">✓ YES</span>';
-  if (t === 'DOWN' && (rz === 'SELL' || rz === 'NEUTRAL')) return '<span class="badge bd">✓ YES</span>';
-  if (t === 'SIDE') return '<span class="badge bn">— N/A</span>';
-  return '<span class="badge by">⚠ MIXED</span>';
+/**
+ * Bybit v5 /market/kline
+ * interval: '5' = 5 min, '15' = 15 min
+ * Response: { result:{ list:[ [startTime,o,h,l,close,vol,turnover], ... ] } }
+ * List is NEWEST-FIRST → must reverse.
+ */
+async function fetchBybit(intervalMin) {
+  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${CFG.SYMBOL}&interval=${intervalMin}&limit=${CFG.CANDLE_LIMIT}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`Bybit HTTP ${res.status}`);
+  const j = await res.json();
+  if (j.retCode !== 0) throw new Error(`Bybit: ${j.retMsg}`);
+  const list = j.result && j.result.list;
+  if (!Array.isArray(list) || list.length < 20) throw new Error('Bybit: insufficient data');
+  // index 4 = close price; list is newest-first
+  return list.map(k => parseFloat(k[4])).reverse();
 }
 
-/* ──────────── MAIN UPDATE ──────────── */
-function render(d) {
-  // Price
-  const pe = $('btc-price');
-  if (pe) {
-    pe.classList.remove('shimmer');
-    pe.textContent = '$' + fmt(d.price);
-    if (d.prev != null) {
-      pe.style.color = d.price > d.prev ? 'var(--g)' : d.price < d.prev ? 'var(--r)' : '#fff';
-      setTimeout(() => { if (pe) pe.style.color = '#fff'; }, 700);
+/**
+ * OKX v5 /market/candles
+ * bar: '5m', '15m'
+ * Response: { data:[ [ts,o,h,l,close,vol,volCcy,volCcyQuote,confirm], ... ] }
+ * Data is NEWEST-FIRST → must reverse.
+ */
+async function fetchOKX(intervalMin) {
+  const bar = intervalMin + 'm';
+  const url = `https://www.okx.com/api/v5/market/candles?instId=BTC-USDT&bar=${bar}&limit=${CFG.CANDLE_LIMIT}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`OKX HTTP ${res.status}`);
+  const j = await res.json();
+  if (j.code !== '0') throw new Error(`OKX: ${j.msg}`);
+  const data = j.data;
+  if (!Array.isArray(data) || data.length < 20) throw new Error('OKX: insufficient data');
+  // index 4 = close; data is newest-first
+  return data.map(k => parseFloat(k[4])).reverse();
+}
+
+/**
+ * KuCoin v1 /market/candles
+ * type: '5min', '15min'
+ * Response: { data:[ [ts,open,close,high,low,volume,amount], ... ] }
+ * NOTE: KuCoin index 2 = CLOSE (not index 4!)
+ * Data is NEWEST-FIRST → must reverse.
+ */
+async function fetchKuCoin(intervalMin) {
+  const typeStr = intervalMin + 'min';
+  const now  = Math.floor(Date.now() / 1000);
+  const from = now - parseInt(intervalMin) * 60 * (CFG.CANDLE_LIMIT + 10);
+  const url  = `https://api.kucoin.com/api/v1/market/candles?type=${typeStr}&symbol=${CFG.SYMBOL_KC}&startAt=${from}&endAt=${now}`;
+  const res  = await fetch(url, { signal: AbortSignal.timeout(9000) });
+  if (!res.ok) throw new Error(`KuCoin HTTP ${res.status}`);
+  const j = await res.json();
+  if (j.code !== '200000') throw new Error(`KuCoin: ${j.msg}`);
+  const data = j.data;
+  if (!Array.isArray(data) || data.length < 20) throw new Error('KuCoin: insufficient data');
+  // KuCoin: index 2 = close; newest-first
+  return data.map(k => parseFloat(k[2])).reverse();
+}
+
+/**
+ * Try all three data sources for a given interval.
+ * Returns closes array (oldest-first) from whichever succeeds first.
+ */
+async function fetchCloses(intervalMin) {
+  const sources = [
+    { name: 'Bybit',  fn: () => fetchBybit(intervalMin) },
+    { name: 'OKX',    fn: () => fetchOKX(intervalMin) },
+    { name: 'KuCoin', fn: () => fetchKuCoin(intervalMin) },
+  ];
+  const errors = [];
+  for (const src of sources) {
+    try {
+      const closes = await src.fn();
+      // Sanity check: all values must be finite positive numbers
+      if (!closes.every(v => isFinite(v) && v > 0)) throw new Error('Invalid price values');
+      lastSrcName = src.name;
+      return closes;
+    } catch (err) {
+      console.warn(`[Signal] ${src.name} (${intervalMin}m) failed:`, err.message);
+      errors.push(`${src.name}: ${err.message}`);
     }
   }
-  if (d.prev != null) {
-    const ch = d.price - d.prev, pct = ((ch / d.prev) * 100).toFixed(4);
-    const col = ch >= 0 ? 'var(--g)' : 'var(--r)';
-    set('btc-change', `<span style="color:${col}">${ch >= 0 ? '+' : ''}${fmt(ch)} (${ch >= 0 ? '+' : ''}${pct}%)</span> from last tick`);
+  throw new Error('All sources failed for ' + intervalMin + 'm — ' + errors.join(' | '));
+}
+
+/**
+ * CoinGecko simple price — for live price + 24h change overlay.
+ * Falls back gracefully if unavailable.
+ */
+async function fetchCoinGeckoPrice() {
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${CFG.CG_ID}&vs_currencies=usd&include_24hr_change=true`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
+  if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+  const j = await res.json();
+  const coin = j[CFG.CG_ID];
+  if (!coin) throw new Error('CoinGecko: no data');
+  return { price: coin.usd, change24h: coin.usd_24h_change };
+}
+
+/* ══════════════════════════════════════════════════════
+   UI HELPERS
+══════════════════════════════════════════════════════ */
+
+const $   = id => document.getElementById(id);
+const set = (id, html) => { const e = $(id); if (e) e.innerHTML = html; };
+
+/** Format a price number with commas, 2 decimal places */
+function fmtPrice(n) {
+  if (n == null || isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Format a small EMA value (same as price but shorter for mini labels) */
+function fmtShort(n) {
+  if (n == null || isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+/** Trend HTML badge */
+function trendBadge(trend) {
+  const map = {
+    UP:   ['b-up',   '▲ UP'],
+    DOWN: ['b-down', '▼ DOWN'],
+    SIDE: ['b-side', '◆ SIDE'],
+  };
+  const [cls, lbl] = map[trend] || ['b-na', '—'];
+  return `<span class="tr-badge ${cls}">${lbl}</span>`;
+}
+
+/** Inline badge for table cells */
+function cellBadge(cls, text) {
+  const colors = {
+    green:  'color:var(--green)',
+    red:    'color:var(--red)',
+    yellow: 'color:var(--yellow)',
+    dim:    'color:var(--text3)',
+  };
+  return `<span style="${colors[cls]||''};font-weight:700">${text}</span>`;
+}
+
+/** Update the RSI visual bar and thumb */
+function updateRsiBar(rsiVal) {
+  const safe = rsiVal != null ? Math.min(100, Math.max(0, rsiVal)) : 50;
+  const pct  = safe + '%';
+  const fill  = $('rsi-fill');
+  const thumb = $('rsi-thumb');
+  if (fill)  fill.style.width = pct;
+  if (thumb) thumb.style.left  = pct;
+}
+
+/** Determine RSI zone label and color for display */
+function rsiZoneDisplay(rsiZone, rsiVal) {
+  if (rsiVal == null) return { lbl: '—', style: '' };
+  if (rsiZone === 'BUY')  return { lbl: `RSI ${rsiVal.toFixed(1)} · BUY ZONE`,  style: 'color:var(--green)' };
+  if (rsiZone === 'SELL') return { lbl: `RSI ${rsiVal.toFixed(1)} · SELL ZONE`, style: 'color:var(--red)' };
+  if (rsiVal > 70)        return { lbl: `RSI ${rsiVal.toFixed(1)} · OVERBOUGHT`, style: 'color:var(--yellow)' };
+  if (rsiVal < 30)        return { lbl: `RSI ${rsiVal.toFixed(1)} · OVERSOLD`,   style: 'color:var(--yellow)' };
+  return { lbl: `RSI ${rsiVal.toFixed(1)} · NEUTRAL`, style: 'color:var(--text2)' };
+}
+
+/** Show / hide error banner */
+function showError(msg) {
+  const el = $('error-box');
+  if (el) { el.style.display = 'block'; el.textContent = '⚠ ' + msg; }
+}
+function hideError() {
+  const el = $('error-box'); if (el) el.style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════════════
+   MAIN RENDER
+══════════════════════════════════════════════════════ */
+function render(data) {
+  const {
+    price, change24h,
+    e50_5, e200_5, e50_15, e200_15,
+    rsiVal, trend5m, trend15m, signal,
+  } = data;
+
+  // ── Price display ──
+  const priceEl = $('btc-price');
+  if (priceEl) {
+    priceEl.classList.remove('shim');
+    priceEl.textContent = '$' + fmtPrice(price);
+    if (prevPrice !== null) {
+      priceEl.classList.toggle('up',   price > prevPrice);
+      priceEl.classList.toggle('down', price < prevPrice);
+      setTimeout(() => {
+        priceEl.classList.remove('up', 'down');
+      }, 700);
+    }
   }
-  set('last-updated', 'LAST UPDATE: ' + new Date().toLocaleTimeString('en-US', { hour12: false }));
 
-  // Signal card
+  // 24h change
+  if (change24h != null && isFinite(change24h)) {
+    const sign = change24h >= 0 ? '+' : '';
+    const cls  = change24h >= 0 ? 'up' : 'down';
+    set('btc-change', `<span class="${cls}">${sign}${change24h.toFixed(2)}% 24h</span>`);
+  }
+
+  // Timestamp + source
+  const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+  set('last-updated', `UPDATED ${now}`);
+  set('src-tag', `SRC: ${lastSrcName}`);
+
+  // ── Signal card ──
   const card = $('signal-card');
-  if (card) card.className = 'signal-card ' + d.sig.cls;
-  const se = $('signal-text');
-  if (se) { se.classList.remove('shimmer'); se.textContent = d.sig.emoji + ' ' + d.sig.label; }
-  set('signal-desc', d.sig.desc);
+  if (card) card.className = 'sig-card ' + signal.type;
 
-  // EMA values
-  set('ema50-5m',   fmt(d.e50_5));
-  set('ema200-5m',  fmt(d.e200_5));
-  set('ema50-15m',  fmt(d.e50_15));
-  set('ema200-15m', fmt(d.e200_15));
+  const sigTextEl = $('signal-text');
+  if (sigTextEl) {
+    sigTextEl.classList.remove('shim');
+    sigTextEl.textContent = signal.emoji + ' ' + signal.label;
+  }
+  set('signal-desc', signal.desc);
 
-  // RSI bar
-  const rv = d.rsi != null ? Math.min(100, Math.max(0, d.rsi)) : 50;
-  set('rsi-value', d.rsi != null ? rv.toFixed(1) : '—');
-  const rf = $('rsi-fill'), rt = $('rsi-thumb');
-  if (rf) rf.style.width = rv + '%';
-  if (rt) rt.style.left  = rv + '%';
+  // ── RSI ──
+  const rsiZone = getRsiZone(rsiVal);
+  updateRsiBar(rsiVal);
+  set('rsi-number', rsiVal != null ? rsiVal.toFixed(1) : '—');
+  const rsiDisp = rsiZoneDisplay(rsiZone, rsiVal);
+  const rsiZoneEl = $('rsi-zone-lbl');
+  if (rsiZoneEl) { rsiZoneEl.textContent = rsiDisp.lbl; rsiZoneEl.style = rsiDisp.style; }
 
-  // Table
-  const rz = rsiZone(d.rsi);
-  set('trend-5m',    trendBadge(d.t5));
-  set('cross-5m',    crossBadge(d.e50_5,  d.e200_5));
-  set('confirm-5m',  confirmBadge(d.t5,  rz));
-  set('trend-15m',   trendBadge(d.t15));
-  set('cross-15m',   crossBadge(d.e50_15, d.e200_15));
-  set('confirm-15m', confirmBadge(d.t15, rz));
+  // ── Trend alignment panel ──
+  set('ema50-5m-mini',   `EMA50: ${fmtShort(e50_5)}`);
+  set('ema200-5m-mini',  `EMA200: ${fmtShort(e200_5)}`);
+  set('ema50-15m-mini',  `EMA50: ${fmtShort(e50_15)}`);
+  set('ema200-15m-mini', `EMA200: ${fmtShort(e200_15)}`);
 
-  const eb = $('error-banner');
-  if (eb) eb.style.display = 'none';
+  const tb5  = $('trend-5m-badge');
+  const tb15 = $('trend-15m-badge');
+  if (tb5) {
+    const map = { UP:['b-up','▲ UP'], DOWN:['b-down','▼ DOWN'], SIDE:['b-side','◆ SIDE'] };
+    const [cls, lbl] = map[trend5m] || ['b-na','—'];
+    tb5.className = 'tr-badge ' + cls; tb5.textContent = lbl;
+  }
+  if (tb15) {
+    const map = { UP:['b-up','▲ UP'], DOWN:['b-down','▼ DOWN'], SIDE:['b-side','◆ SIDE'] };
+    const [cls, lbl] = map[trend15m] || ['b-na','—'];
+    tb15.className = 'tr-badge ' + cls; tb15.textContent = lbl;
+  }
+
+  // ── EMA value grid ──
+  set('ema50-5m',   fmtPrice(e50_5));
+  set('ema200-5m',  fmtPrice(e200_5));
+  set('ema50-15m',  fmtPrice(e50_15));
+  set('ema200-15m', fmtPrice(e200_15));
+
+  // ── Detail table ──
+  // 5M row
+  const spread5  = (e50_5 != null && e200_5  != null) ? (e50_5  - e200_5).toFixed(1)  : '—';
+  const spread15 = (e50_15 != null && e200_15 != null) ? (e50_15 - e200_15).toFixed(1) : '—';
+  const spreadSign5  = parseFloat(spread5)  >= 0 ? '+' : '';
+  const spreadSign15 = parseFloat(spread15) >= 0 ? '+' : '';
+
+  const trendColor = t => t === 'UP' ? 'green' : t === 'DOWN' ? 'red' : 'yellow';
+  const trendLabel = t => t === 'UP' ? '▲ UP' : t === 'DOWN' ? '▼ DOWN' : '◆ SIDE';
+
+  set('dt-trend-5m',   cellBadge(trendColor(trend5m),  trendLabel(trend5m)));
+  set('dt-spread-5m',  `<span style="color:${parseFloat(spread5)>=0?'var(--green)':'var(--red)'}">${spreadSign5}${spread5}</span>`);
+  set('dt-rsi-5m',     rsiVal != null ? `${rsiVal.toFixed(1)}` : '—');
+  set('dt-confirm-5m', trend5m !== 'SIDE'
+    ? cellBadge(trendColor(trend5m), trend5m === signal.type.toUpperCase() ? '✓ YES' : '✗ NO')
+    : cellBadge('dim', '— N/A'));
+
+  set('dt-trend-15m',   cellBadge(trendColor(trend15m), trendLabel(trend15m)));
+  set('dt-spread-15m',  `<span style="color:${parseFloat(spread15)>=0?'var(--green)':'var(--red)'}">${spreadSign15}${spread15}</span>`);
+  set('dt-rsi-15m',     '—');   // RSI only calculated on 5m
+  set('dt-confirm-15m', trend15m !== 'SIDE'
+    ? cellBadge(trendColor(trend15m), trend15m === signal.type.toUpperCase() ? '✓ YES' : '✗ NO')
+    : cellBadge('dim', '— N/A'));
+
+  hideError();
+  prevPrice = price;
 }
 
-function showErr(msg) {
-  const eb = $('error-banner');
-  if (eb) { eb.style.display = 'block'; eb.textContent = '⚠ ' + msg; }
-  console.error('[BTC Signal]', msg);
-}
-
-/* ──────────── COUNTDOWN ──────────── */
-let cdSec = 10;
-function startCountdown() {
-  cdSec = 10; clearInterval(countdownTimer); tick();
-  countdownTimer = setInterval(tick, 1000);
-}
-function tick() {
-  cdSec = Math.max(0, cdSec - 1);
-  const n = $('countdown-num'), f = $('progress-fill');
-  if (n) n.textContent = cdSec + 's';
-  if (f) f.style.width = (cdSec / 10 * 100) + '%';
-}
-
-/* ──────────── REFRESH ──────────── */
+/* ══════════════════════════════════════════════════════
+   MAIN REFRESH CYCLE
+══════════════════════════════════════════════════════ */
 async function refresh() {
   try {
-    const [c5, c15] = await Promise.all([fetchCloses('5m'), fetchCloses('15m')]);
+    // Fetch both timeframes in parallel
+    const [closes5m, closes15m] = await Promise.all([
+      fetchCloses('5'),
+      fetchCloses('15'),
+    ]);
 
-    const price   = c5[c5.length - 1];
-    const e50_5   = calcEMA(c5,  CFG.emaFast);
-    const e200_5  = calcEMA(c5,  CFG.emaSlow);
-    const e50_15  = calcEMA(c15, CFG.emaFast);
-    const e200_15 = calcEMA(c15, CFG.emaSlow);
-    const rsi     = calcRSI(c5,  CFG.rsiPeriod);
-    const t5      = trend(e50_5,  e200_5);
-    const t15     = trend(e50_15, e200_15);
-    const rz      = rsiZone(rsi);
-    const sig     = signal(t5, t15, rz);
+    // Calculate all indicators
+    const e50_5   = calcEMA(closes5m,  CFG.EMA_FAST);
+    const e200_5  = calcEMA(closes5m,  CFG.EMA_SLOW);
+    const e50_15  = calcEMA(closes15m, CFG.EMA_FAST);
+    const e200_15 = calcEMA(closes15m, CFG.EMA_SLOW);
+    const rsiVal  = calcRSI(closes5m,  CFG.RSI_PERIOD);
 
-    render({ price, prev: prevPrice, e50_5, e200_5, e50_15, e200_15, rsi, t5, t15, sig });
-    prevPrice = price;
+    // Trend directions
+    const trend5m  = getTrend(e50_5,  e200_5);
+    const trend15m = getTrend(e50_15, e200_15);
+    const rsiZone  = getRsiZone(rsiVal);
+
+    // Generate signal
+    const signal = generateSignal(trend5m, trend15m, rsiZone);
+
+    // Live price = last close from candles (most recent completed candle)
+    let price    = closes5m[closes5m.length - 1];
+    let change24h = null;
+
+    // Enhance price with CoinGecko (more accurate spot + 24h change)
+    // This is fire-and-forget — a failure doesn't block signal rendering
+    try {
+      const cg = await fetchCoinGeckoPrice();
+      if (cg.price && cg.price > 0) {
+        price     = cg.price;
+        change24h = cg.change24h;
+      }
+    } catch (_) {
+      // CoinGecko failed silently — candle close price is still shown
+    }
+
+    render({ price, change24h, e50_5, e200_5, e50_15, e200_15, rsiVal, trend5m, trend15m, signal });
+
+    // ── Telegram alert hook (fire when signal changes) ──
+    // Uncomment to enable:
+    // if (signal.type !== 'wait') {
+    //   sendTelegram(`${signal.emoji} ${signal.label} — BTC $${fmtPrice(price)}`);
+    // }
+
   } catch (err) {
-    showErr(err.message || 'Data fetch failed. Retrying…');
+    showError(err.message || 'Market data unavailable. Retrying…');
+    console.error('[Signal]', err);
   }
+
   startCountdown();
 }
 
-/* ──────────── BOOT ──────────── */
-refresh();
-setInterval(refresh, CFG.refreshMs);
-      
+/* ══════════════════════════════════════════════════════
+   COUNTDOWN TIMER
+══════════════════════════════════════════════════════ */
+function startCountdown() {
+  cdSec = CFG.REFRESH_MS / 1000;
+  clearInterval(cdTimer);
+  tickCountdown();
+  cdTimer = setInterval(tickCountdown, 1000);
+}
+
+function tickCountdown() {
+  cdSec = Math.max(0, cdSec - 1);
+  const numEl  = $('cd-num');
+  const fillEl = $('cd-fill');
+  if (numEl)  numEl.textContent  = cdSec + 's';
+  if (fillEl) fillEl.style.width = (cdSec / (CFG.REFRESH_MS / 1000) * 100) + '%';
+}
+
+/* ══════════════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════════════ */
+(function init() {
+  refresh();                                      // immediate first load
+  refreshTimer = setInterval(refresh, CFG.REFRESH_MS);  // then every 10s
+})();
+
+/* ══════════════════════════════════════════════════════
+   FUTURE UPGRADE STUBS (ready to wire in)
+══════════════════════════════════════════════════════
+
+   ── GOLD (XAU/USD) ──
+   To add Gold signals, duplicate the fetchCloses / render
+   pipeline with a second CFG object:
+     const GOLD = { SYMBOL:'XAUUSDT', SYMBOL_KC:'XAU-
