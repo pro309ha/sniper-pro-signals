@@ -4,8 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SNIPER PRO · BTC Signal Terminal</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     :root{
       --bg0:#06080b;--bg1:#0a0f16;--bg2:#0f1820;--bg3:#162030;
@@ -22,18 +21,18 @@
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     body{background:var(--bg0);color:var(--text);font-family:var(--ui);min-height:100vh;overflow-x:hidden}
     body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-      background:radial-gradient(ellipse 70% 35% at 50% 0%,rgba(245,166,35,.07) 0%,transparent 65%)}
+      background:radial-gradient(ellipse 70% 35% at 50% 0%,rgba(245,166,35,.07) 0%,transparent 65%),
+                 radial-gradient(ellipse 40% 50% at 95% 90%,rgba(0,212,255,.04) 0%,transparent 55%)}
     body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-      background-image:linear-gradient(rgba(245,166,35,.022) 1px,transparent 1px),
-        linear-gradient(90deg,rgba(245,166,35,.022) 1px,transparent 1px);background-size:50px 50px}
+      background-image:linear-gradient(rgba(245,166,35,.02) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(245,166,35,.02) 1px,transparent 1px);background-size:50px 50px}
     #scl{position:fixed;inset:0;z-index:0;pointer-events:none;
       background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 4px)}
     .shell{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:0 14px 80px}
 
-    /* topbar */
+    /* ── topbar ── */
     .topbar{display:flex;align-items:center;justify-content:space-between;
-      padding:16px 0 14px;border-bottom:1px solid var(--bdr);margin-bottom:20px;
-      flex-wrap:wrap;gap:10px}
+      padding:16px 0 14px;border-bottom:1px solid var(--bdr);margin-bottom:20px;flex-wrap:wrap;gap:10px}
     .brand-name{font-family:var(--disp);font-size:clamp(1.6rem,5vw,2.2rem);
       letter-spacing:.18em;color:var(--amber);text-shadow:0 0 28px rgba(245,166,35,.45);line-height:1}
     .brand-sub{font-family:var(--mono);font-size:.58rem;color:var(--text3);letter-spacing:.1em;margin-left:10px}
@@ -47,29 +46,27 @@
     #src-tag{font-family:var(--mono);font-size:.58rem;letter-spacing:.08em;color:var(--text3);
       border:1px solid var(--bdr);border-radius:4px;padding:5px 10px}
 
-    /* price hero */
+    /* ── price hero ── */
     .price-hero{background:var(--bg1);border:1px solid var(--bdr);border-radius:8px;
       padding:26px 22px 20px;margin-bottom:14px;position:relative;overflow:hidden}
     .price-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
       background:linear-gradient(90deg,transparent,var(--amber) 35%,var(--amber2) 65%,transparent)}
     .price-hero::after{content:'BTC';position:absolute;right:18px;bottom:10px;
-      font-family:var(--disp);font-size:6rem;letter-spacing:.08em;
-      color:rgba(245,166,35,.04);pointer-events:none;line-height:1}
-    .hero-eye{font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;
-      color:var(--text3);text-transform:uppercase;margin-bottom:8px}
-    .hero-row{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
-    #btc-price{font-family:var(--disp);font-size:clamp(2.4rem,9vw,4.4rem);
-      letter-spacing:.03em;color:var(--white);line-height:1;transition:color .3s;min-width:180px}
-    #btc-change{font-family:var(--mono);font-size:.8rem;letter-spacing:.04em}
-    .up{color:var(--green)!important} .down{color:var(--red)!important}
-    .hero-foot{margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-    #last-updated{font-family:var(--mono);font-size:.58rem;letter-spacing:.08em;color:var(--text3)}
-    #conn-status{font-family:var(--mono);font-size:.56rem;color:var(--amber);letter-spacing:.06em}
+      font-family:var(--disp);font-size:6rem;color:rgba(245,166,35,.04);pointer-events:none;line-height:1}
     .btl,.bbr{position:absolute;width:14px;height:14px;pointer-events:none}
     .btl{top:0;left:0;border-top:2px solid var(--amber);border-left:2px solid var(--amber)}
     .bbr{bottom:0;right:0;border-bottom:2px solid var(--amber);border-right:2px solid var(--amber)}
+    .hero-eye{font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;color:var(--text3);
+      text-transform:uppercase;margin-bottom:8px}
+    .hero-row{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+    #btc-price{font-family:var(--disp);font-size:clamp(2.4rem,9vw,4.4rem);
+      letter-spacing:.03em;color:var(--white);line-height:1;transition:color .3s;min-width:180px}
+    #btc-change{font-family:var(--mono);font-size:.8rem}
+    .up{color:var(--green)!important}.down{color:var(--red)!important}
+    .hero-foot{margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    #last-updated{font-family:var(--mono);font-size:.58rem;letter-spacing:.08em;color:var(--text3)}
 
-    /* signal card */
+    /* ── signal card ── */
     .sig-card{background:var(--bg1);border:1px solid var(--bdr);border-radius:8px;
       padding:28px 22px;margin-bottom:14px;text-align:center;position:relative;overflow:hidden;
       transition:border-color .5s,box-shadow .5s,background .5s}
@@ -92,45 +89,40 @@
     .wait #signal-text{color:var(--yellow);text-shadow:0 0 22px rgba(240,192,64,.4)}
     #signal-desc{font-family:var(--ui);font-size:.88rem;color:var(--text2);margin-top:12px}
 
-    /* err */
+    /* ── err / info ── */
     #err{display:none;background:rgba(255,64,64,.06);border:1px solid rgba(255,64,64,.25);
       border-radius:8px;padding:11px 16px;margin-bottom:13px;
       font-family:var(--mono);font-size:.65rem;color:var(--red);text-align:center}
+    #info-bar{font-family:var(--mono);font-size:.6rem;color:var(--amber);
+      text-align:center;margin-bottom:12px;letter-spacing:.06em;min-height:16px}
 
-    /* two col */
+    /* ── two col ── */
     .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
     @media(max-width:560px){.two-col{grid-template-columns:1fr}}
     .panel{background:var(--bg1);border:1px solid var(--bdr);border-radius:8px;padding:17px 15px}
     .panel-title{font-family:var(--mono);font-size:.58rem;letter-spacing:.18em;color:var(--text3);
       text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-    .panel-title::before{content:'';width:3px;height:10px;background:var(--amber);
-      border-radius:2px;flex-shrink:0}
+    .panel-title::before{content:'';width:3px;height:10px;background:var(--amber);border-radius:2px;flex-shrink:0}
 
-    /* RSI */
+    /* ── RSI ── */
     .rsi-num{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
     #rsi-number{font-family:var(--disp);font-size:2.4rem;color:var(--white);line-height:1}
     #rsi-zlbl{font-family:var(--mono);font-size:.65rem;letter-spacing:.1em;color:var(--text2)}
     .rsi-track{height:8px;background:rgba(255,255,255,.04);border-radius:999px;
       position:relative;overflow:visible;margin-bottom:7px}
-    .rsi-os{position:absolute;left:0;top:0;bottom:0;width:30%;
-      background:rgba(255,64,64,.1);border-radius:999px 0 0 999px}
-    .rsi-ob{position:absolute;right:0;top:0;bottom:0;width:30%;
-      background:rgba(0,255,157,.07);border-radius:0 999px 999px 0}
+    .rsi-os{position:absolute;left:0;top:0;bottom:0;width:30%;background:rgba(255,64,64,.1);border-radius:999px 0 0 999px}
+    .rsi-ob{position:absolute;right:0;top:0;bottom:0;width:30%;background:rgba(0,255,157,.07);border-radius:0 999px 999px 0}
     #rsi-fill{position:absolute;left:0;top:0;bottom:0;
       background:linear-gradient(90deg,var(--red),var(--yellow),var(--green));
       border-radius:999px;transition:width .7s}
     #rsi-thumb{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;
-      background:var(--white);border:2px solid var(--amber);
-      transform:translate(-50%,-50%);transition:left .7s;
-      box-shadow:0 0 10px rgba(245,166,35,.5);z-index:2}
-    .rsi-labs{display:flex;justify-content:space-between;font-family:var(--mono);
-      font-size:.54rem;color:var(--text3)}
+      background:var(--white);border:2px solid var(--amber);transform:translate(-50%,-50%);
+      transition:left .7s;box-shadow:0 0 10px rgba(245,166,35,.5);z-index:2}
+    .rsi-labs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.54rem;color:var(--text3)}
 
-    /* trend */
-    .tr-row{display:flex;align-items:center;justify-content:space-between;
-      padding:10px 0;border-bottom:1px solid var(--bdr)}
-    .tr-row:first-of-type{padding-top:0}
-    .tr-row:last-of-type{border-bottom:none;padding-bottom:0}
+    /* ── trend panel ── */
+    .tr-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bdr)}
+    .tr-row:first-of-type{padding-top:0}.tr-row:last-of-type{border-bottom:none;padding-bottom:0}
     .tr-tf{font-family:var(--disp);font-size:1.15rem;letter-spacing:.12em;color:var(--amber);min-width:38px}
     .tr-vals{font-family:var(--mono);font-size:.6rem;color:var(--text2);line-height:1.7;text-align:center;flex:1}
     .tbadge{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;padding:4px 10px;border-radius:4px;font-weight:700}
@@ -139,7 +131,7 @@
     .b-side{background:rgba(240,192,64,.07);color:var(--yellow);border:1px solid rgba(240,192,64,.2)}
     .b-na{background:rgba(30,42,56,.4);color:var(--text3);border:1px solid var(--bdr)}
 
-    /* ema grid */
+    /* ── EMA grid ── */
     .ema-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
     @media(max-width:560px){.ema-grid{grid-template-columns:1fr 1fr}}
     .ema-box{background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:14px 12px;text-align:center}
@@ -147,18 +139,17 @@
     .ema-val{font-family:var(--disp);font-size:1.05rem;color:var(--text)}
     .ema-sub{font-family:var(--mono);font-size:.5rem;color:var(--text3);margin-top:3px}
 
-    /* detail table */
+    /* ── detail table ── */
     .dt-wrap{background:var(--bg1);border:1px solid var(--bdr);border-radius:8px;overflow:hidden;margin-bottom:14px}
     .dt-hdr,.dt-row{display:grid;grid-template-columns:65px 1fr 1fr 1fr 1fr;padding:10px 15px;align-items:center}
     .dt-hdr{background:rgba(0,0,0,.25);border-bottom:1px solid var(--bdr)}
-    .dt-row{border-bottom:1px solid var(--bdr)}
-    .dt-row:last-child{border-bottom:none}
+    .dt-row{border-bottom:1px solid var(--bdr)}.dt-row:last-child{border-bottom:none}
     .dth{font-family:var(--mono);font-size:.55rem;letter-spacing:.12em;color:var(--text3);text-transform:uppercase}
     .dtf{font-family:var(--disp);font-size:.88rem;letter-spacing:.1em;color:var(--amber)}
     .dtv{font-family:var(--mono);font-size:.62rem;color:var(--text2)}
     @media(max-width:500px){.dt-hdr,.dt-row{grid-template-columns:50px 1fr 1fr 1fr 1fr;padding:10px 9px}}
 
-    /* countdown */
+    /* ── countdown ── */
     .cd-row{display:flex;align-items:center;gap:12px;margin-bottom:26px}
     .cd-lbl{font-family:var(--mono);font-size:.58rem;letter-spacing:.1em;color:var(--text3);white-space:nowrap}
     #cd-num{font-family:var(--disp);font-size:1rem;color:var(--amber);min-width:26px}
@@ -179,7 +170,6 @@
 <body>
 <div id="scl"></div>
 <div class="shell">
-
   <header class="topbar">
     <div>
       <span class="brand-name">SNIPER PRO</span>
@@ -195,13 +185,10 @@
     <div class="btl"></div><div class="bbr"></div>
     <div class="hero-eye">BITCOIN · USDT · SPOT PRICE</div>
     <div class="hero-row">
-      <div id="btc-price" class="shim">$——,———.——</div>
+      <div id="btc-price" class="shim" style="min-width:220px">$——,———.——</div>
       <div id="btc-change"></div>
     </div>
-    <div class="hero-foot">
-      <div id="last-updated">CONNECTING…</div>
-      <div id="conn-status"></div>
-    </div>
+    <div class="hero-foot"><div id="last-updated">CONNECTING…</div></div>
   </section>
 
   <section class="sig-card wait" id="sig-card">
@@ -209,14 +196,15 @@
     <div class="btl"></div><div class="bbr"></div>
     <div class="sig-eye">TRADING SIGNAL · DUAL TF CONFIRMATION</div>
     <div id="signal-text" class="shim" style="min-width:200px">⏳ LOADING…</div>
-    <div id="signal-desc">Connecting to market data…</div>
+    <div id="signal-desc">Building price history buffer…</div>
   </section>
 
   <div id="err"></div>
+  <div id="info-bar"></div>
 
   <div class="two-col">
     <div class="panel">
-      <div class="panel-title">RSI · 14 · 5‑MINUTE</div>
+      <div class="panel-title">RSI · 14 · 5‑MIN (ESTIMATED)</div>
       <div class="rsi-num"><div id="rsi-number">—</div><div id="rsi-zlbl">—</div></div>
       <div class="rsi-track">
         <div class="rsi-os"></div><div class="rsi-ob"></div>
@@ -266,45 +254,55 @@
 
   <div class="cd-row">
     <div class="cd-lbl">NEXT REFRESH</div>
-    <div id="cd-num">30s</div>
+    <div id="cd-num">15s</div>
     <div class="cd-track"><div id="cd-fill" style="width:100%"></div></div>
   </div>
 
   <footer>
     <div class="ft">SNIPER PRO · BTC/USDT SIGNAL TERMINAL</div>
-    <div class="ft">EMA50 · EMA200 · RSI14 · DUAL TIMEFRAME</div>
+    <div class="ft">EMA50 · EMA200 · RSI14 · DUAL TIMEFRAME CONFIRMATION</div>
     <div class="ft-w">⚠ NOT FINANCIAL ADVICE · EDUCATIONAL USE ONLY</div>
   </footer>
 </div>
 
 <script>
 /*
- * SNIPER PRO — Universal Data Engine
+ * SNIPER PRO — Universal Engine v6
  * 
- * STRATEGY: Try EVERY possible method in parallel.
- * Whichever responds first wins. This makes it work
- * on Brave, Chrome, Firefox, any network, any region.
- *
- * METHOD ORDER (all tried simultaneously):
- * 1. WebSocket Binance kline streams (no CORS)
- * 2. REST Binance direct
- * 3. REST via allorigins proxy
- * 4. REST via corsproxy.io
- * 5. Bybit direct REST
- * 6. OKX direct REST
- * 7. KuCoin direct REST
+ * ARCHITECTURE:
+ * Since exchange candle APIs are blocked on many networks,
+ * this engine uses a TICK-BASED approach:
+ * 
+ * 1. Fetch live BTC price every 15s from multiple sources
+ *    (Coinbase, CoinLore, CoinGecko, Kraken — all CORS-open)
+ * 2. Store price ticks in rolling time-bucketed buffers
+ *    to simulate 5m and 15m "candles"
+ * 3. Calculate EMA50, EMA200, RSI14 from these ticks
+ * 4. After enough data (needs ~200 ticks = ~50 min),
+ *    show real signals
+ * 
+ * ALSO tries direct candle APIs in background.
+ * If any candle API works, use that instead.
  */
 'use strict';
 
-const CFG = {
-  EMA_FAST: 50, EMA_SLOW: 200, RSI_PER: 14,
-  BUF: 220, CD: 30,
-};
+/* ─── CONFIG ─── */
+const TICK_INTERVAL = 15000;  // fetch price every 15s
+const CD_SECS = 15;
+const EMA_FAST = 50, EMA_SLOW = 200, RSI_PER = 14;
+const MAX_TICKS = 500;
 
-/* ─── state ─── */
-const buf = {'5m':[], '15m':[]};
-let prevPrice = null, cdSec = CFG.CD, cdTimer = null;
-let dataReady = false, wsActive = false;
+/* ─── PRICE TICK STORAGE ─── */
+// Each tick: { t: timestamp_ms, p: price }
+const ticks = [];
+
+/* ─── CANDLE BUFFERS (from direct API if available) ─── */
+const candleBuf = { '5m': [], '15m': [] };
+let candleMode = false;  // true = using real candles
+
+/* ─── STATE ─── */
+let prevPrice = null, cdSec = CD_SECS, cdTimer = null;
+let tickCount = 0;
 
 /* ══════════════════════════════════
    INDICATORS
@@ -316,6 +314,7 @@ function calcEMA(arr, p) {
   for (let i=p;i<arr.length;i++) v=arr[i]*k+v*(1-k);
   return v;
 }
+
 function calcRSI(arr, p) {
   if (!arr||arr.length<p+1) return null;
   let g=0,l=0;
@@ -328,22 +327,25 @@ function calcRSI(arr, p) {
   }
   return al===0?100:100-100/(1+ag/al);
 }
+
 function getTrend(f,s){
-  if(f==null||s==null)return 'SIDE';
+  if(f==null||s==null) return 'SIDE';
   const r=(f-s)/s;
   return r>0.0002?'UP':r<-0.0002?'DOWN':'SIDE';
 }
+
 function getRsiZone(v){
-  if(v==null)return'N';
-  if(v>=52&&v<=68)return'BUY';
-  if(v>=32&&v<=48)return'SELL';
-  return'N';
+  if(v==null) return 'N';
+  if(v>=52&&v<=68) return 'BUY';
+  if(v>=32&&v<=48) return 'SELL';
+  return 'N';
 }
+
 function makeSignal(t5,t15,rz){
-  if(t5==='UP'&&t15==='UP')return{cls:'buy',txt:'🚀 STRONG BUY',
+  if(t5==='UP'&&t15==='UP') return {cls:'buy',txt:'🚀 STRONG BUY',
     desc:(rz==='BUY'||rz==='N')?'Both timeframes UPTREND. RSI supports entry.':
     'Both timeframes UPTREND. RSI elevated — manage risk.'};
-  if(t5==='DOWN'&&t15==='DOWN')return{cls:'sell',txt:'🔻 STRONG SELL',
+  if(t5==='DOWN'&&t15==='DOWN') return {cls:'sell',txt:'🔻 STRONG SELL',
     desc:(rz==='SELL'||rz==='N')?'Both timeframes DOWNTREND. RSI supports entry.':
     'Both timeframes DOWNTREND. RSI low — watch for reversal.'};
   return{cls:'wait',txt:'⏳ WAIT',
@@ -353,59 +355,39 @@ function makeSignal(t5,t15,rz){
 }
 
 /* ══════════════════════════════════
-   PUSH CLOSE TO BUFFER
+   TICK → PSEUDO-CANDLE CONVERSION
+   Groups price ticks into time buckets
+   to approximate candle close prices
 ══════════════════════════════════ */
-function pushClose(tf, v, isLive) {
-  const b = buf[tf];
-  if (isLive) {
-    // Update current (not-yet-closed) candle
-    if (b.length > 0) b[b.length-1] = v;
-    else b.push(v);
-  } else {
-    // Confirmed closed candle
-    b.push(v);
-    if (b.length > CFG.BUF) b.shift();
-  }
-}
-
-/* ══════════════════════════════════
-   RECALCULATE & RENDER SIGNALS
-══════════════════════════════════ */
-let lastRecalc = 0;
-function recalc() {
+function ticksToCloses(bucketMs) {
+  if (ticks.length < 2) return [];
+  const closes = [];
   const now = Date.now();
-  if (now - lastRecalc < 800) return;
-  lastRecalc = now;
+  const oldest = ticks[0].t;
+  const buckets = Math.ceil((now - oldest) / bucketMs);
+  if (buckets < 2) return [];
 
-  const c5 = buf['5m'], c15 = buf['15m'];
-  if (c5.length < CFG.EMA_SLOW+5 || c15.length < CFG.EMA_SLOW+5) {
-    setConn(`Building buffer: 5M=${c5.length} 15M=${c15.length}/${CFG.EMA_SLOW+5} needed`);
-    return;
+  for (let b = 0; b < buckets; b++) {
+    const start = oldest + b * bucketMs;
+    const end   = start + bucketMs;
+    const inBucket = ticks.filter(t => t.t >= start && t.t < end);
+    if (inBucket.length > 0) {
+      // Use last price in bucket as "close"
+      closes.push(inBucket[inBucket.length-1].p);
+    } else if (closes.length > 0) {
+      // Fill gap with previous close
+      closes.push(closes[closes.length-1]);
+    }
   }
-
-  const e50_5  = calcEMA(c5, CFG.EMA_FAST);
-  const e200_5 = calcEMA(c5, CFG.EMA_SLOW);
-  const e50_15 = calcEMA(c15,CFG.EMA_FAST);
-  const e200_15= calcEMA(c15,CFG.EMA_SLOW);
-  const rv     = calcRSI(c5, CFG.RSI_PER);
-  const t5     = getTrend(e50_5,  e200_5);
-  const t15    = getTrend(e50_15, e200_15);
-  const rz     = getRsiZone(rv);
-  const sig    = makeSignal(t5, t15, rz);
-
-  renderSignals({e50_5,e200_5,e50_15,e200_15,rv,t5,t15,sig});
-  if (!dataReady) { dataReady=true; startCD(); }
+  return closes;
 }
 
 /* ══════════════════════════════════
-   WEBSOCKET — Binance streams
-   No CORS, works everywhere.
-   
-   But Brave Shield blocks wss:// too
-   so we also try REST simultaneously.
+   RECALCULATE SIGNALS
 ══════════════════════════════════ */
-function startWebSockets() {
-  const BASE = 'wss://stream.binance.com:9443/ws/';
+function recalc() {
+  let c5, c15;
 
-  function makeKlineWS(tf) {
-    try
+  if (candleMode && candleBuf['5m'].length >= EMA_SLOW+5) {
+    // Use real candles from API
+    c5  = candle
